@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TouristQR - Admin & QR Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- qrious library for instant client-side QR generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen p-6">
@@ -15,14 +14,29 @@
         <header class="bg-white p-6 rounded-2xl shadow-sm flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold text-slate-900">TouristQR Management Console</h1>
-                <p class="text-xs text-slate-500">Add locations, manage sponsors, and generate QR badges</p>
+                <p class="text-xs text-slate-500">Add, modify, and generate QR badges</p>
             </div>
-            <a href="index.html" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl font-medium">View Live Site →</a>
+            <div class="flex gap-2">
+                <button onclick="viewLiveSite()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-medium border border-blue-200">View Live Site →</button>
+            </div>
         </header>
 
-        <!-- Add Site Form -->
+        <!-- Selector to Modify Existing Sites -->
+        <section class="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select Site to Modify</label>
+                <select id="site-selector" onchange="loadSiteIntoForm(this.value)" class="border rounded-xl p-2 text-sm w-64 bg-slate-50">
+                    <option value="">-- Choose site to edit --</option>
+                </select>
+            </div>
+            <button type="button" onclick="prepareNewSite()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium transition shadow-sm">
+                + Next New Site
+            </button>
+        </section>
+
+        <!-- Add/Edit Site Form -->
         <section class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
-            <h2 class="font-bold text-slate-900 border-b pb-2">1. Add New Historic Site</h2>
+            <h2 id="form-title" class="font-bold text-slate-900 border-b pb-2">Add / Modify Historic Site</h2>
             <form id="site-form" class="space-y-4" onsubmit="handleFormSubmit(event)">
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -37,7 +51,7 @@
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Sponsor Tag (Backend Reference)</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Sponsor Tag</label>
                         <input type="text" id="siteSponsor" required placeholder="e.g. Heritage Victoria" class="w-full border rounded-xl p-2 text-sm">
                     </div>
                     <div>
@@ -56,14 +70,32 @@
                     <textarea id="siteDesc" rows="3" required placeholder="Enter brief history..." class="w-full border rounded-xl p-2 text-sm"></textarea>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <!-- Photos Section -->
+                <div class="space-y-3 pt-2 border-t">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Photo Gallery URLs</h3>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1">Primary Image URL</label>
                         <input type="url" id="primaryImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Known Photo URL</label>
-                        <input type="url" id="oldestImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Thumbnail Photo 2 URL</label>
+                            <input type="url" id="thumb2Img" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Thumbnail Photo 3 URL</label>
+                            <input type="url" id="thumb3Img" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Known Photo URL</label>
+                            <input type="url" id="oldestImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Photo Caption</label>
+                            <input type="text" id="oldestCaption" placeholder="Caption..." class="w-full border rounded-xl p-2 text-sm">
+                        </div>
                     </div>
                 </div>
 
@@ -75,7 +107,7 @@
 
         <!-- QR Generator Output Section -->
         <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 hidden text-center">
-            <h2 class="font-bold text-slate-900 text-left border-b pb-2">2. Generated QR Code Badge</h2>
+            <h2 class="font-bold text-slate-900 text-left border-b pb-2">Generated QR Code Badge</h2>
             <div class="flex flex-col items-center space-y-3">
                 <canvas id="qr-canvas" class="border p-2 rounded-xl bg-white shadow-sm"></canvas>
                 <p id="qr-target-url" class="text-xs text-slate-500 font-mono"></p>
@@ -86,18 +118,101 @@
     </div>
 
     <script>
+        let loadedSites = [];
+        let activeSiteId = "";
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('data/sites.json');
+                loadedSites = await response.json();
+                
+                const localSaved = localStorage.getItem('touristqr_sites');
+                if (localSaved) {
+                    loadedSites = JSON.parse(localSaved);
+                }
+
+                populateSelector();
+            } catch (e) {
+                console.error("Could not load sites.json", e);
+            }
+        });
+
+        function populateSelector() {
+            const selector = document.getElementById('site-selector');
+            selector.innerHTML = '<option value="">-- Choose site to edit --</option>' + 
+                loadedSites.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
+        }
+
+        function loadSiteIntoForm(id) {
+            if (!id) return;
+            const site = loadedSites.find(s => s.id === id);
+            if (!site) return;
+
+            activeSiteId = site.id;
+            document.getElementById('siteId').value = site.id;
+            document.getElementById('siteName').value = site.name;
+            document.getElementById('siteSponsor').value = site.sponsor;
+            document.getElementById('siteYear').value = site.buildYear;
+            document.getElementById('siteMaps').value = site.mapsQuery;
+            document.getElementById('siteDesc').value = site.description;
+            
+            document.getElementById('primaryImg').value = site.primaryImage;
+            document.getElementById('thumb2Img').value = site.thumbnails[1] || '';
+            document.getElementById('thumb3Img').value = site.thumbnails[2] || '';
+            document.getElementById('oldestImg').value = site.oldestPhoto;
+            document.getElementById('oldestCaption').value = site.oldestCaption || '';
+
+            generateQR(site.id);
+        }
+
+        function prepareNewSite() {
+            activeSiteId = "";
+            document.getElementById('site-form').reset();
+            document.getElementById('site-selector').value = "";
+            document.getElementById('qr-section').classList.add('hidden');
+        }
+
         function handleFormSubmit(event) {
             event.preventDefault();
             
             const id = document.getElementById('siteId').value.trim();
-            const name = document.getElementById('siteName').value;
-            const sponsor = document.getElementById('siteSponsor').value;
-            
-            // Construct target URL for the QR code pointing to GitHub Pages
+            const newSite = {
+                id: id,
+                name: document.getElementById('siteName').value,
+                sponsor: document.getElementById('siteSponsor').value,
+                buildYear: document.getElementById('siteYear').value,
+                mapsQuery: document.getElementById('siteMaps').value,
+                description: document.getElementById('siteDesc').value,
+                primaryImage: document.getElementById('primaryImg').value,
+                thumbnails: [
+                    document.getElementById('primaryImg').value,
+                    document.getElementById('thumb2Img').value,
+                    document.getElementById('thumb3Img').value
+                ],
+                oldestPhoto: document.getElementById('oldestImg').value,
+                oldestCaption: document.getElementById('oldestCaption').value
+            };
+
+            const index = loadedSites.findIndex(s => s.id === id);
+            if (index !== -1) {
+                loadedSites[index] = newSite;
+            } else {
+                loadedSites.push(newSite);
+            }
+
+            localStorage.setItem('touristqr_sites', JSON.stringify(loadedSites));
+            populateSelector();
+            document.getElementById('site-selector').value = id;
+            activeSiteId = id;
+
+            generateQR(id);
+            alert("Site saved successfully!");
+        }
+
+        function generateQR(id) {
             const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
             const targetUrl = `${baseUrl}index.html?site=${id}`;
 
-            // Generate QR Code via QRious
             document.getElementById('qr-section').classList.remove('hidden');
             document.getElementById('qr-target-url').textContent = targetUrl;
             
@@ -107,12 +222,13 @@
                 size: 200
             });
 
-            // Set download link
-            const downloadBtn = document.getElementById('download-qr');
-            downloadBtn.href = qr.toDataURL();
-            downloadBtn.download = `${id}-qr-code.png`;
+            document.getElementById('download-qr').href = qr.toDataURL();
+            document.getElementById('download-qr').download = `${id}-qr-code.png`;
+        }
 
-            alert(`Site record ready! Remember to add this entry into your data/sites.json file for full persistence.`);
+        function viewLiveSite() {
+            const targetId = activeSiteId || (loadedSites.length > 0 ? loadedSites[0].id : 'historic-post-office');
+            window.open(`index.html?site=${targetId}`, '_blank');
         }
     </script>
 </body>

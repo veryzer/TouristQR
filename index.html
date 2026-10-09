@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TouristQR - Historic Site Guide</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- html5-qrcode library for camera-based scanning -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- TouristQR Banner (Clickable Title opens About Modal) -->
+    <!-- TouristQR Banner -->
     <header class="bg-blue-900 text-white py-4 px-6 shadow-md sticky top-0 z-20 flex justify-between items-center">
         <h1 class="text-xl font-bold tracking-wide cursor-pointer hover:underline" onclick="openAboutModal()">TouristQR</h1>
         <span id="sponsor-badge" class="text-xs bg-blue-800 text-blue-200 px-2.5 py-1 rounded-full font-medium">Sponsored by Local Council</span>
@@ -19,12 +18,20 @@
     <!-- Main Content Container -->
     <main class="max-w-md mx-auto w-full p-4 flex-grow space-y-5">
         
-        <div>
-            <h2 id="place-name" class="text-2xl font-bold text-slate-900">Loading Site...</h2>
-            <p class="text-xs text-slate-500">Established / Built: <span id="build-year" class="font-semibold text-slate-700">-</span></p>
+        <!-- Place Name & Navigation Arrows -->
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 id="place-name" class="text-2xl font-bold text-slate-900">Loading Site...</h2>
+                <p class="text-xs text-slate-500">Established / Built: <span id="build-year" class="font-semibold text-slate-700">-</span></p>
+            </div>
+            <!-- Previous / Next Site Arrows -->
+            <div class="flex gap-1">
+                <button onclick="navigateSite(-1)" title="Previous Site" class="bg-white border border-slate-300 hover:bg-slate-100 p-2 rounded-xl text-slate-700 shadow-sm font-bold">⬅</button>
+                <button onclick="navigateSite(1)" title="Next Site" class="bg-white border border-slate-300 hover:bg-slate-100 p-2 rounded-xl text-slate-700 shadow-sm font-bold">➡</button>
+            </div>
         </div>
 
-        <!-- Primary Photo (Clickable to Zoom) -->
+        <!-- Primary Photo -->
         <div class="space-y-2">
             <div class="relative overflow-hidden rounded-xl shadow-md bg-slate-200 aspect-[4/3] cursor-pointer group" onclick="openModal(currentPrimarySrc)">
                 <img id="primary-image" src="" alt="Primary historic photo" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
@@ -34,12 +41,10 @@
             </div>
 
             <!-- Next 3 Thumbnails -->
-            <div id="thumbnails-container" class="grid grid-cols-3 gap-2">
-                <!-- Dynamically populated -->
-            </div>
+            <div id="thumbnails-container" class="grid grid-cols-3 gap-2"></div>
         </div>
 
-        <!-- Action Links: QR Scanner & Maps & Add to List -->
+        <!-- Action Links: QR Scanner, Maps, Save -->
         <div class="grid grid-cols-3 gap-2">
             <button onclick="startScanner()" class="flex flex-col items-center justify-center bg-slate-800 hover:bg-slate-900 text-white py-2 px-2 rounded-xl text-xs font-medium shadow-sm transition">
                 <span class="text-base">📷</span> Scan QR
@@ -80,7 +85,7 @@
 
     </main>
 
-    <!-- About TouristQR Modal -->
+    <!-- About Modal -->
     <div id="about-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl">
             <div class="flex justify-between items-center">
@@ -88,7 +93,7 @@
                 <button onclick="closeAboutModal()" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
             <p class="text-sm text-slate-600 leading-relaxed">
-                **TouristQR** is a next-generation smart tourism discovery network. By placing scannable QR codes near cultural, architectural, and historical landmarks, we connect physical explorers instantly with rich digital archives, sponsor stories, and interactive navigation tools right on their smartphones.
+                **TouristQR** connects physical explorers instantly with digital archives, sponsor stories, and interactive navigation tools via smartphone QR code scans.
             </p>
             <button onclick="closeAboutModal()" class="w-full bg-blue-600 text-white py-2.5 rounded-xl font-medium text-sm">Got it</button>
         </div>
@@ -101,45 +106,68 @@
 
     <script>
         let currentPrimarySrc = "";
+        let sitesList = [];
+        let currentIndex = 0;
         let html5QrCode = null;
 
-        // Load site details based on URL parameter ?site=ID
         window.addEventListener('DOMContentLoaded', async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const siteId = urlParams.get('site') || 'historic-post-office';
-
             try {
                 const response = await fetch('data/sites.json');
-                const sites = await response.json();
-                const site = sites.find(s => s.id === siteId) || sites[0];
+                sitesList = await response.json();
 
-                document.getElementById('place-name').textContent = site.name;
-                document.getElementById('build-year').textContent = site.buildYear;
-                document.getElementById('sponsor-badge').textContent = `Sponsored by ${site.sponsor}`;
-                document.getElementById('primary-image').src = site.primaryImage;
-                currentPrimarySrc = site.primaryImage;
-                document.getElementById('site-description').textContent = site.description;
-                document.getElementById('maps-link').href = `https://maps.google.com/?q=${site.mapsQuery}`;
-                
-                document.getElementById('oldest-title').textContent = `Oldest Known Photo`;
-                document.getElementById('oldest-img').src = site.oldestPhoto;
-                document.getElementById('oldest-caption').textContent = site.oldestCaption;
+                // Check localStorage for any newly added/modified sites during testing session
+                const localSaved = localStorage.getItem('touristqr_sites');
+                if (localSaved) {
+                    sitesList = JSON.parse(localSaved);
+                }
 
-                // Render thumbnails
-                const thumbContainer = document.getElementById('thumbnails-container');
-                thumbContainer.innerHTML = site.thumbnails.map(src => `
-                    <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage('${src}')">
-                        <img src="${src}" class="w-full h-full object-cover">
-                    </div>
-                `).join('');
+                const urlParams = new URLSearchParams(window.location.search);
+                const siteId = urlParams.get('site');
+
+                if (siteId) {
+                    const foundIndex = sitesList.findIndex(s => s.id === siteId);
+                    if (foundIndex !== -1) currentIndex = foundIndex;
+                }
+
+                loadSiteData(currentIndex);
             } catch (e) {
                 console.error("Could not load site data", e);
             }
         });
 
+        function loadSiteData(index) {
+            if (sitesList.length === 0) return;
+            const site = sitesList[index];
+            
+            document.getElementById('place-name').textContent = site.name;
+            document.getElementById('build-year').textContent = site.buildYear;
+            document.getElementById('sponsor-badge').textContent = `Sponsored by ${site.sponsor}`;
+            document.getElementById('primary-image').src = site.primaryImage;
+            currentPrimarySrc = site.primaryImage;
+            document.getElementById('site-description').textContent = site.description;
+            document.getElementById('maps-link').href = `https://maps.google.com/?q=${site.mapsQuery}`;
+            
+            document.getElementById('oldest-title').textContent = `Oldest Known Photo`;
+            document.getElementById('oldest-img').src = site.oldestPhoto;
+            document.getElementById('oldest-caption').textContent = site.oldestCaption || 'Archival capture';
+
+            const thumbContainer = document.getElementById('thumbnails-container');
+            thumbContainer.innerHTML = site.thumbnails.map(src => `
+                <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage('${src}')">
+                    <img src="${src}" class="w-full h-full object-cover">
+                </div>
+            `).join('');
+        }
+
+        function navigateSite(direction) {
+            currentIndex += direction;
+            if (currentIndex < 0) currentIndex = sitesList.length - 1;
+            if (currentIndex >= sitesList.length) currentIndex = 0;
+            loadSiteData(currentIndex);
+        }
+
         function switchImage(src) {
-            const primaryImg = document.getElementById('primary-image');
-            primaryImg.src = src;
+            document.getElementById('primary-image').src = src;
             currentPrimarySrc = src;
         }
 
@@ -165,7 +193,6 @@
             btn.innerHTML = '<span class="text-base">✅</span> Saved';
         }
 
-        // QR Scanner Logic
         function startScanner() {
             document.getElementById('scanner-modal').classList.remove('hidden');
             html5QrCode = new Html5Qrcode("reader");
@@ -174,7 +201,7 @@
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 qrCodeMessage => {
                     stopScanner();
-                    window.location.href = qrCodeMessage; // Expecting URL or parameter
+                    window.location.href = qrCodeMessage;
                 },
                 errorMessage => {}
             ).catch(err => {
@@ -187,7 +214,7 @@
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('scanner-modal').classList.add('hidden');
-                }).catch(err => {
+                }).catch(() => {
                     document.getElementById('scanner-modal').classList.add('hidden');
                 });
             } else {
