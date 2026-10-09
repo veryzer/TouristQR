@@ -3,116 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TouristQR - Historic Site</title>
-    <!-- Tailwind CSS CDN for rapid responsive design -->
+    <title>TouristQR - Historic Site Guide</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html5-qrcode library for camera-based scanning -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- TouristQR Banner -->
+    <!-- TouristQR Banner (Clickable Title opens About Modal) -->
     <header class="bg-blue-900 text-white py-4 px-6 shadow-md sticky top-0 z-20 flex justify-between items-center">
-        <h1 class="text-xl font-bold tracking-wide">TouristQR</h1>
-        <span class="text-xs bg-blue-800 text-blue-200 px-2.5 py-1 rounded-full font-medium">Historic Site Guide</span>
+        <h1 class="text-xl font-bold tracking-wide cursor-pointer hover:underline" onclick="openAboutModal()">TouristQR</h1>
+        <span id="sponsor-badge" class="text-xs bg-blue-800 text-blue-200 px-2.5 py-1 rounded-full font-medium">Sponsored by Local Council</span>
     </header>
 
     <!-- Main Content Container -->
     <main class="max-w-md mx-auto w-full p-4 flex-grow space-y-5">
         
-        <!-- Place Name -->
         <div>
-            <h2 id="place-name" class="text-2xl font-bold text-slate-900">Historic Post Office</h2>
-            <p class="text-xs text-slate-500">Established / Built: <span id="build-year" class="font-semibold text-slate-700">1884</span></p>
+            <h2 id="place-name" class="text-2xl font-bold text-slate-900">Loading Site...</h2>
+            <p class="text-xs text-slate-500">Established / Built: <span id="build-year" class="font-semibold text-slate-700">-</span></p>
         </div>
 
         <!-- Primary Photo (Clickable to Zoom) -->
         <div class="space-y-2">
             <div class="relative overflow-hidden rounded-xl shadow-md bg-slate-200 aspect-[4/3] cursor-pointer group" onclick="openModal(currentPrimarySrc)">
-                <img id="primary-image" src="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80" alt="Primary historic photo" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+                <img id="primary-image" src="" alt="Primary historic photo" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
                 <div class="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm pointer-events-none">
                     Tap to zoom
                 </div>
             </div>
 
             <!-- Next 3 Thumbnails -->
-            <div class="grid grid-cols-3 gap-2">
-                <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage(this)">
-                    <img src="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=400&q=80" alt="Thumbnail 1" class="w-full h-full object-cover">
-                </div>
-                <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage(this)">
-                    <img src="https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=400&q=80" alt="Thumbnail 2" class="w-full h-full object-cover">
-                </div>
-                <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage(this)">
-                    <img src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80" alt="Thumbnail 3" class="w-full h-full object-cover">
-                </div>
+            <div id="thumbnails-container" class="grid grid-cols-3 gap-2">
+                <!-- Dynamically populated -->
             </div>
         </div>
 
-        <!-- Action Links: Maps & Add to List -->
-        <div class="grid grid-cols-2 gap-3">
-            <a id="maps-link" href="https://maps.google.com/?q=Historic+Post+Office" target="_blank" class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-sm font-medium shadow-sm transition">
-                <span>📍 Navigate</span>
+        <!-- Action Links: QR Scanner & Maps & Add to List -->
+        <div class="grid grid-cols-3 gap-2">
+            <button onclick="startScanner()" class="flex flex-col items-center justify-center bg-slate-800 hover:bg-slate-900 text-white py-2 px-2 rounded-xl text-xs font-medium shadow-sm transition">
+                <span class="text-base">📷</span> Scan QR
+            </button>
+            <a id="maps-link" href="#" target="_blank" class="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white py-2 px-2 rounded-xl text-xs font-medium shadow-sm transition">
+                <span class="text-base">📍</span> Navigate
             </a>
-            <button onclick="addToList()" id="add-list-btn" class="flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 py-2.5 px-4 rounded-xl text-sm font-medium shadow-sm transition">
-                <span>⭐ Save Place</span>
+            <button onclick="addToList()" id="add-list-btn" class="flex flex-col items-center justify-center bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 py-2 px-2 rounded-xl text-xs font-medium shadow-sm transition">
+                <span class="text-base">⭐</span> Save
             </button>
         </div>
 
-        <!-- 100-Word History Description -->
+        <!-- QR Scanner Modal Box -->
+        <div id="scanner-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm rounded-2xl p-4 space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800">Scan Site QR Code</h3>
+                    <button onclick="stopScanner()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+                </div>
+                <div id="reader" class="overflow-hidden rounded-xl"></div>
+            </div>
+        </div>
+
+        <!-- Description -->
         <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
-            <p class="text-sm text-slate-600 leading-relaxed">
-                Constructed during the height of the late 19th-century regional expansion, this architectural landmark served as the primary communications hub for local settlers and traders alike. Built using locally quarried sandstone and classic Victorian-era detailing, the facility operated continuously for nearly eight decades before being preserved as a public heritage museum. Visitors can still inspect original telegraph switchboards, restored postal counters, and archival documents detailing the daily pioneer hardships and triumphs that helped shape the surrounding community's rich historical identity into the modern era.
-            </p>
+            <p id="site-description" class="text-sm text-slate-600 leading-relaxed">Loading history...</p>
         </section>
 
-        <!-- Oldest Known Photo Section at the Bottom -->
+        <!-- Oldest Known Photo Section -->
         <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Oldest Known Photo (c. 1890)</h3>
-            <div class="overflow-hidden rounded-lg bg-slate-200 aspect-[16/9] cursor-pointer" onclick="openModal(this.querySelector('img').src)">
-                <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80" alt="Oldest known archive photo" class="w-full h-full object-cover filter sepia-[0.3]">
+            <h3 id="oldest-title" class="text-xs font-bold uppercase tracking-wider text-slate-400">Oldest Known Photo</h3>
+            <div class="overflow-hidden rounded-lg bg-slate-200 aspect-[16/9] cursor-pointer" onclick="openModal(document.getElementById('oldest-img').src)">
+                <img id="oldest-img" src="" alt="Oldest known archive photo" class="w-full h-full object-cover filter sepia-[0.3]">
             </div>
-            <p class="text-xs text-slate-500 italic text-center">Archival archive capture showing the original timber facade prior to the 1905 stone extension.</p>
+            <p id="oldest-caption" class="text-xs text-slate-500 italic text-center"></p>
         </section>
 
     </main>
+
+    <!-- About TouristQR Modal -->
+    <div id="about-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-slate-900">About TouristQR</h3>
+                <button onclick="closeAboutModal()" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <p class="text-sm text-slate-600 leading-relaxed">
+                **TouristQR** is a next-generation smart tourism discovery network. By placing scannable QR codes near cultural, architectural, and historical landmarks, we connect physical explorers instantly with rich digital archives, sponsor stories, and interactive navigation tools right on their smartphones.
+            </p>
+            <button onclick="closeAboutModal()" class="w-full bg-blue-600 text-white py-2.5 rounded-xl font-medium text-sm">Got it</button>
+        </div>
+    </div>
 
     <!-- Image Zoom Modal -->
     <div id="image-modal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-4" onclick="closeModal()">
         <img id="modal-image" src="" alt="Zoomed view" class="max-w-full max-h-full rounded-lg object-contain">
     </div>
 
-    <!-- JavaScript for Interactivity -->
     <script>
-        let currentPrimarySrc = document.getElementById('primary-image').src;
+        let currentPrimarySrc = "";
+        let html5QrCode = null;
 
-        function switchImage(element) {
-            const clickedImg = element.querySelector('img');
+        // Load site details based on URL parameter ?site=ID
+        window.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const siteId = urlParams.get('site') || 'historic-post-office';
+
+            try {
+                const response = await fetch('data/sites.json');
+                const sites = await response.json();
+                const site = sites.find(s => s.id === siteId) || sites[0];
+
+                document.getElementById('place-name').textContent = site.name;
+                document.getElementById('build-year').textContent = site.buildYear;
+                document.getElementById('sponsor-badge').textContent = `Sponsored by ${site.sponsor}`;
+                document.getElementById('primary-image').src = site.primaryImage;
+                currentPrimarySrc = site.primaryImage;
+                document.getElementById('site-description').textContent = site.description;
+                document.getElementById('maps-link').href = `https://maps.google.com/?q=${site.mapsQuery}`;
+                
+                document.getElementById('oldest-title').textContent = `Oldest Known Photo`;
+                document.getElementById('oldest-img').src = site.oldestPhoto;
+                document.getElementById('oldest-caption').textContent = site.oldestCaption;
+
+                // Render thumbnails
+                const thumbContainer = document.getElementById('thumbnails-container');
+                thumbContainer.innerHTML = site.thumbnails.map(src => `
+                    <div class="overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] cursor-pointer border-2 border-transparent hover:border-blue-600 transition" onclick="switchImage('${src}')">
+                        <img src="${src}" class="w-full h-full object-cover">
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error("Could not load site data", e);
+            }
+        });
+
+        function switchImage(src) {
             const primaryImg = document.getElementById('primary-image');
-            
-            // Swap sources
-            const tempSrc = primaryImg.src;
-            primaryImg.src = clickedImg.src;
-            clickedImg.src = tempSrc;
-            
-            currentPrimarySrc = primaryImg.src;
+            primaryImg.src = src;
+            currentPrimarySrc = src;
         }
 
         function openModal(src) {
-            const modal = document.getElementById('image-modal');
-            const modalImg = document.getElementById('modal-image');
-            modalImg.src = src;
-            modal.classList.remove('hidden');
+            document.getElementById('modal-image').src = src;
+            document.getElementById('image-modal').classList.remove('hidden');
         }
 
         function closeModal() {
             document.getElementById('image-modal').classList.add('hidden');
         }
 
+        function openAboutModal() {
+            document.getElementById('about-modal').classList.remove('hidden');
+        }
+
+        function closeAboutModal() {
+            document.getElementById('about-modal').classList.add('hidden');
+        }
+
         function addToList() {
             const btn = document.getElementById('add-list-btn');
-            btn.innerHTML = '<span>✅ Saved!</span>';
-            btn.classList.add('bg-green-50', 'text-green-700', 'border-green-300');
-            // Logic to persist to localStorage can be added here
+            btn.innerHTML = '<span class="text-base">✅</span> Saved';
+        }
+
+        // QR Scanner Logic
+        function startScanner() {
+            document.getElementById('scanner-modal').classList.remove('hidden');
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                qrCodeMessage => {
+                    stopScanner();
+                    window.location.href = qrCodeMessage; // Expecting URL or parameter
+                },
+                errorMessage => {}
+            ).catch(err => {
+                alert("Camera permission denied or unavailable.");
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scanner-modal').classList.add('hidden');
+                }).catch(err => {
+                    document.getElementById('scanner-modal').classList.add('hidden');
+                });
+            } else {
+                document.getElementById('scanner-modal').classList.add('hidden');
+            }
         }
     </script>
 </body>

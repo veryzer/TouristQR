@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TouristQR - Admin & QR Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- qrious library for instant client-side QR generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen p-6">
+    <div class="max-w-2xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="bg-white p-6 rounded-2xl shadow-sm flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">TouristQR Management Console</h1>
+                <p class="text-xs text-slate-500">Add locations, manage sponsors, and generate QR badges</p>
+            </div>
+            <a href="index.html" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl font-medium">View Live Site →</a>
+        </header>
+
+        <!-- Add Site Form -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
+            <h2 class="font-bold text-slate-900 border-b pb-2">1. Add New Historic Site</h2>
+            <form id="site-form" class="space-y-4" onsubmit="handleFormSubmit(event)">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Site ID (slug)</label>
+                        <input type="text" id="siteId" required placeholder="e.g. old-mill" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Place Name</label>
+                        <input type="text" id="siteName" required placeholder="e.g. The Old Pioneer Mill" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Sponsor Tag (Backend Reference)</label>
+                        <input type="text" id="siteSponsor" required placeholder="e.g. Heritage Victoria" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Build Year</label>
+                        <input type="text" id="siteYear" required placeholder="e.g. 1872" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Google Maps Query/Address</label>
+                    <input type="text" id="siteMaps" required placeholder="e.g. 123+Main+Street" class="w-full border rounded-xl p-2 text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">History Description (~100 words)</label>
+                    <textarea id="siteDesc" rows="3" required placeholder="Enter brief history..." class="w-full border rounded-xl p-2 text-sm"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Primary Image URL</label>
+                        <input type="url" id="primaryImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Known Photo URL</label>
+                        <input type="url" id="oldestImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition">
+                    Save Site & Generate QR Code
+                </button>
+            </form>
+        </section>
+
+        <!-- QR Generator Output Section -->
+        <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 hidden text-center">
+            <h2 class="font-bold text-slate-900 text-left border-b pb-2">2. Generated QR Code Badge</h2>
+            <div class="flex flex-col items-center space-y-3">
+                <canvas id="qr-canvas" class="border p-2 rounded-xl bg-white shadow-sm"></canvas>
+                <p id="qr-target-url" class="text-xs text-slate-500 font-mono"></p>
+                <a id="download-qr" download="tourist-qr.png" class="bg-slate-800 text-white text-xs px-4 py-2 rounded-xl font-medium inline-block">Download QR Image</a>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const id = document.getElementById('siteId').value.trim();
+            const name = document.getElementById('siteName').value;
+            const sponsor = document.getElementById('siteSponsor').value;
+            
+            // Construct target URL for the QR code pointing to GitHub Pages
+            const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+            const targetUrl = `${baseUrl}index.html?site=${id}`;
+
+            // Generate QR Code via QRious
+            document.getElementById('qr-section').classList.remove('hidden');
+            document.getElementById('qr-target-url').textContent = targetUrl;
+            
+            const qr = new QRious({
+                element: document.getElementById('qr-canvas'),
+                value: targetUrl,
+                size: 200
+            });
+
+            // Set download link
+            const downloadBtn = document.getElementById('download-qr');
+            downloadBtn.href = qr.toDataURL();
+            downloadBtn.download = `${id}-qr-code.png`;
+
+            alert(`Site record ready! Remember to add this entry into your data/sites.json file for full persistence.`);
+        }
+    </script>
+</body>
+</html>

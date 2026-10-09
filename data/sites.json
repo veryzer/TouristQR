@@ -1,0 +1,18 @@
+[
+    {
+      "id": "historic-post-office",
+      "name": "Historic Post Office",
+      "sponsor": "City Heritage Council",
+      "buildYear": "1884",
+      "mapsQuery": "Historic+Post+Office",
+      "description": "Constructed during the height of late 19th-century regional expansion, this architectural landmark served as the primary communications hub for local settlers and traders alike. Built using locally quarried sandstone and classic Victorian-era detailing, the facility operated continuously for nearly eight decades before being preserved as a public heritage museum.",
+      "primaryImage": "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80",
+      "thumbnails": [
+        "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=400&q=80",
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=400&q=80",
+        "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80"
+      ],
+      "oldestPhoto": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80",
+      "oldestCaption": "Archival capture showing the original timber facade prior to the 1905 stone extension."
+    }
+  ]
