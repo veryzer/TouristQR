@@ -112,13 +112,16 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             try {
-                const response = await fetch('data/sites.json');
-                sitesList = await response.json();
-
-                // Check localStorage for any newly added/modified sites during testing session
+                // 1. Check browser storage first (where admin console writes new/updated sites)
                 const localSaved = localStorage.getItem('touristqr_sites');
                 if (localSaved) {
                     sitesList = JSON.parse(localSaved);
+                }
+
+                // 2. Fallback or merge with sites.json file if local storage is empty
+                if (sitesList.length === 0) {
+                    const response = await fetch('data/sites.json');
+                    sitesList = await response.json();
                 }
 
                 const urlParams = new URLSearchParams(window.location.search);
