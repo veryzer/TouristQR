@@ -9,227 +9,162 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen p-6">
     <div class="max-w-2xl mx-auto space-y-6">
-        
-        <!-- Header -->
-        <header class="bg-white p-6 rounded-2xl shadow-sm flex justify-between items-center">
+
+        <header class="bg-white p-6 rounded-2xl shadow-sm flex justify-between items-center gap-3">
             <div>
                 <h1 class="text-xl font-bold text-slate-900">TouristQR Management Console</h1>
-                <p class="text-xs text-slate-500">Add, modify, and generate QR badges</p>
+                <p class="text-xs text-slate-500 mt-1">Photographs are filed as sponsor number, hyphen, reference. Sponsor 1 starts at 1-001.</p>
             </div>
-            <div class="flex gap-2">
-                <button onclick="viewLiveSite()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-medium border border-blue-200">View Live Site →</button>
-            </div>
+            <button type="button" id="view-live" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-medium border border-blue-200 shrink-0">View live site →</button>
         </header>
 
-        <!-- Selector to Modify Existing Sites -->
-        <section class="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between">
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select Site to Modify</label>
-                <select id="site-selector" onchange="loadSiteIntoForm(this.value)" class="border rounded-xl p-2 text-sm w-64 bg-slate-50">
-                    <option value="">-- Choose site to edit --</option>
-                </select>
-            </div>
-            <button type="button" onclick="prepareNewSite()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium transition shadow-sm">
-                + Next New Site
-            </button>
+        <section class="bg-white p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">Sponsors</h2>
+            <p class="text-xs text-slate-500 leading-relaxed">A listing stays on the public search for 12 months, and through a grace month. After 13 months the address still opens, showing only the name and year. South Barwon is in its grace month. Barwon Waterfront Trust is archived.</p>
+            <div id="org-list" class="space-y-3"></div>
         </section>
 
-        <!-- Add/Edit Site Form -->
+        <section class="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between gap-3">
+            <div class="min-w-0">
+                <label for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site to modify</label>
+                <select id="site-selector" class="border rounded-xl p-2 text-sm w-full max-w-xs bg-slate-50"></select>
+            </div>
+            <button type="button" id="new-site" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium shrink-0">+ Next new site</button>
+        </section>
+
         <section class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
-            <h2 id="form-title" class="font-bold text-slate-900 border-b pb-2">Add / Modify Historic Site</h2>
-            <form id="site-form" class="space-y-4" onsubmit="handleFormSubmit(event)">
+            <h2 class="font-bold text-slate-900 border-b pb-2">Add / modify historic site</h2>
+            <p id="admin-status" class="text-sm text-slate-600" role="status"></p>
+            <form id="site-form" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Site ID (slug)</label>
-                        <input type="text" id="siteId" required placeholder="e.g. old-mill" class="w-full border rounded-xl p-2 text-sm">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteId">Site ID (permanent)</label>
+                        <input type="text" id="siteId" required placeholder="moorabool-wool-exchange" class="w-full border rounded-xl p-2 text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Place Name</label>
-                        <input type="text" id="siteName" required placeholder="e.g. The Old Pioneer Mill" class="w-full border rounded-xl p-2 text-sm">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteName">Place name</label>
+                        <input type="text" id="siteName" required class="w-full border rounded-xl p-2 text-sm">
                     </div>
                 </div>
-
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Sponsor Tag</label>
-                        <input type="text" id="siteSponsor" required placeholder="e.g. Heritage Victoria" class="w-full border rounded-xl p-2 text-sm">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteOrg">Sponsor</label>
+                        <select id="siteOrg" required class="w-full border rounded-xl p-2 text-sm bg-white"></select>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Build Year</label>
-                        <input type="text" id="siteYear" required placeholder="e.g. 1872" class="w-full border rounded-xl p-2 text-sm">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYear">Build year</label>
+                        <input type="text" id="siteYear" required placeholder="1872" class="w-full border rounded-xl p-2 text-sm">
                     </div>
                 </div>
-
+                <label class="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" id="siteCirca" class="rounded">
+                    Year is approximate
+                </label>
+                <p id="computed-status" class="text-xs text-slate-500"></p>
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCategory">Category</label>
+                        <input type="text" id="siteCategory" placeholder="Civic" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteSuburb">Suburb</label>
+                        <input type="text" id="siteSuburb" placeholder="Newtown" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteMapArea">Map area</label>
+                        <input type="text" id="siteMapArea" placeholder="Waterfront" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Google Maps Query/Address</label>
-                    <input type="text" id="siteMaps" required placeholder="e.g. 123+Main+Street" class="w-full border rounded-xl p-2 text-sm">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteMaps">Google Maps query</label>
+                    <input type="text" id="siteMaps" required class="w-full border rounded-xl p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteDesc">History</label>
+                    <textarea id="siteDesc" rows="5" required class="w-full border rounded-xl p-2 text-sm"></textarea>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">History Description (~100 words)</label>
-                    <textarea id="siteDesc" rows="3" required placeholder="Enter brief history..." class="w-full border rounded-xl p-2 text-sm"></textarea>
-                </div>
-
-                <!-- Photos Section -->
                 <div class="space-y-3 pt-2 border-t">
-                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Photo Gallery URLs</h3>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Primary Image URL</label>
-                        <input type="url" id="primaryImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Photographs</h3>
+                        <label class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl cursor-pointer">
+                            Add photograph
+                            <input id="add-photo" type="file" accept="image/*" class="hidden">
+                        </label>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Thumbnail Photo 2 URL</label>
-                            <input type="url" id="thumb2Img" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Thumbnail Photo 3 URL</label>
-                            <input type="url" id="thumb3Img" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Known Photo URL</label>
-                            <input type="url" id="oldestImg" required placeholder="https://..." class="w-full border rounded-xl p-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Oldest Photo Caption</label>
-                            <input type="text" id="oldestCaption" placeholder="Caption..." class="w-full border rounded-xl p-2 text-sm">
-                        </div>
-                    </div>
+                    <p class="text-xs text-slate-500">A new file gets the next reference for that sponsor, such as 1-009.jpg. Replacing a photograph keeps its code. Removed codes are not reused.</p>
+                    <div id="photo-rows" class="space-y-3"></div>
                 </div>
 
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition">
-                    Save Site & Generate QR Code
-                </button>
+                <details class="border rounded-xl p-3">
+                    <summary class="text-sm font-medium cursor-pointer">Background details</summary>
+                    <div class="grid grid-cols-3 gap-4 mt-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCountry">Country</label>
+                            <input type="text" id="siteCountry" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteState">State</label>
+                            <input type="text" id="siteState" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCity">City</label>
+                            <input type="text" id="siteCity" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 mt-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearStart">Year from</label>
+                            <input type="number" id="siteYearStart" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearEnd">Year to</label>
+                            <input type="number" id="siteYearEnd" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCreated">Listing created</label>
+                            <input type="date" id="siteCreated" required class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteFacts">Facts, one per line</label>
+                        <textarea id="siteFacts" rows="3" class="w-full border rounded-xl p-2 text-sm"></textarea>
+                    </div>
+                    <div class="mt-3">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteReading">Longer reading link</label>
+                        <input type="url" id="siteReading" placeholder="https://" class="w-full border rounded-xl p-2 text-sm">
+                    </div>
+                    <div class="mt-3">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteSources">Sources, one per line</label>
+                        <textarea id="siteSources" rows="2" class="w-full border rounded-xl p-2 text-sm"></textarea>
+                    </div>
+                </details>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm">Save site and generate QR code</button>
+                <button type="button" id="delete-site" class="w-full bg-white border border-slate-300 text-slate-700 font-medium py-2.5 rounded-xl text-sm">Delete site</button>
             </form>
         </section>
 
-        <!-- QR Generator Output Section -->
         <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 hidden text-center">
-            <h2 class="font-bold text-slate-900 text-left border-b pb-2">Generated QR Code Badge</h2>
+            <h2 class="font-bold text-slate-900 text-left border-b pb-2">QR code</h2>
             <div class="flex flex-col items-center space-y-3">
                 <canvas id="qr-canvas" class="border p-2 rounded-xl bg-white shadow-sm"></canvas>
-                <p id="qr-target-url" class="text-xs text-slate-500 font-mono"></p>
-                <a id="download-qr" download="tourist-qr.png" class="bg-slate-800 text-white text-xs px-4 py-2 rounded-xl font-medium inline-block">Download QR Image</a>
+                <p id="qr-target-url" class="text-xs text-slate-500 font-mono break-all"></p>
+                <p class="text-xs text-slate-500">This code uses the GitHub Pages address. Change js/config.js when touristqr.com is ready, then generate the code again.</p>
+                <a id="download-qr" download="tourist-qr.png" class="bg-slate-800 text-white text-xs px-4 py-2 rounded-xl font-medium inline-block">Download QR image</a>
             </div>
         </section>
 
+        <section class="bg-white p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">Photographs in code order</h2>
+            <div id="photo-library" class="space-y-2"></div>
+        </section>
     </div>
-
-    <script>
-        let loadedSites = [];
-        let activeSiteId = "";
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                const response = await fetch('data/sites.json');
-                loadedSites = await response.json();
-                
-                const localSaved = localStorage.getItem('touristqr_sites');
-                if (localSaved) {
-                    loadedSites = JSON.parse(localSaved);
-                }
-
-                populateSelector();
-            } catch (e) {
-                console.error("Could not load sites.json", e);
-            }
-        });
-
-        function populateSelector() {
-            const selector = document.getElementById('site-selector');
-            selector.innerHTML = '<option value="">-- Choose site to edit --</option>' + 
-                loadedSites.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
-        }
-
-        function loadSiteIntoForm(id) {
-            if (!id) return;
-            const site = loadedSites.find(s => s.id === id);
-            if (!site) return;
-
-            activeSiteId = site.id;
-            document.getElementById('siteId').value = site.id;
-            document.getElementById('siteName').value = site.name;
-            document.getElementById('siteSponsor').value = site.sponsor;
-            document.getElementById('siteYear').value = site.buildYear;
-            document.getElementById('siteMaps').value = site.mapsQuery;
-            document.getElementById('siteDesc').value = site.description;
-            
-            document.getElementById('primaryImg').value = site.primaryImage;
-            document.getElementById('thumb2Img').value = site.thumbnails[1] || '';
-            document.getElementById('thumb3Img').value = site.thumbnails[2] || '';
-            document.getElementById('oldestImg').value = site.oldestPhoto;
-            document.getElementById('oldestCaption').value = site.oldestCaption || '';
-
-            generateQR(site.id);
-        }
-
-        function prepareNewSite() {
-            activeSiteId = "";
-            document.getElementById('site-form').reset();
-            document.getElementById('site-selector').value = "";
-            document.getElementById('qr-section').classList.add('hidden');
-        }
-
-        function handleFormSubmit(event) {
-            event.preventDefault();
-            
-            const id = document.getElementById('siteId').value.trim();
-            const newSite = {
-                id: id,
-                name: document.getElementById('siteName').value,
-                sponsor: document.getElementById('siteSponsor').value,
-                buildYear: document.getElementById('siteYear').value,
-                mapsQuery: document.getElementById('siteMaps').value,
-                description: document.getElementById('siteDesc').value,
-                primaryImage: document.getElementById('primaryImg').value,
-                thumbnails: [
-                    document.getElementById('primaryImg').value,
-                    document.getElementById('thumb2Img').value,
-                    document.getElementById('thumb3Img').value
-                ],
-                oldestPhoto: document.getElementById('oldestImg').value,
-                oldestCaption: document.getElementById('oldestCaption').value
-            };
-
-            const index = loadedSites.findIndex(s => s.id === id);
-            if (index !== -1) {
-                loadedSites[index] = newSite;
-            } else {
-                loadedSites.push(newSite);
-            }
-
-            localStorage.setItem('touristqr_sites', JSON.stringify(loadedSites));
-            populateSelector();
-            document.getElementById('site-selector').value = id;
-            activeSiteId = id;
-
-            generateQR(id);
-            alert("Site saved successfully!");
-        }
-
-        function generateQR(id) {
-            const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-            const targetUrl = `${baseUrl}index.html?site=${id}`;
-
-            document.getElementById('qr-section').classList.remove('hidden');
-            document.getElementById('qr-target-url').textContent = targetUrl;
-            
-            const qr = new QRious({
-                element: document.getElementById('qr-canvas'),
-                value: targetUrl,
-                size: 200
-            });
-
-            document.getElementById('download-qr').href = qr.toDataURL();
-            document.getElementById('download-qr').download = `${id}-qr-code.png`;
-        }
-
-        function viewLiveSite() {
-            const targetId = activeSiteId || (loadedSites.length > 0 ? loadedSites[0].id : 'historic-post-office');
-            window.open(`index.html?site=${targetId}`, '_blank');
-        }
-    </script>
+    <script type="module" src="js/admin.js"></script>
 </body>
+</html>
+
+</html>
+</html>
+</html>
 </html>

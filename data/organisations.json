@@ -1,0 +1,38 @@
+[
+  {
+    "number": 1,
+    "id": "city-of-greater-geelong",
+    "name": "City of Greater Geelong",
+    "type": "Council",
+    "email": "heritage@greatergeelong.example",
+    "subscribedAt": "2026-03-01",
+    "createdAt": "2026-03-01"
+  },
+  {
+    "number": 2,
+    "id": "geelong-historical-society",
+    "name": "Geelong Historical Society",
+    "type": "Society",
+    "email": "secretary@geelonghistory.example",
+    "subscribedAt": "2026-06-01",
+    "createdAt": "2026-06-01"
+  },
+  {
+    "number": 3,
+    "id": "south-barwon-historical-society",
+    "name": "South Barwon Historical Society",
+    "type": "Society",
+    "email": "records@southbarwonhistory.example",
+    "subscribedAt": "2025-10-01",
+    "createdAt": "2025-10-01"
+  },
+  {
+    "number": 4,
+    "id": "barwon-waterfront-trust",
+    "name": "Barwon Waterfront Trust",
+    "type": "Trust",
+    "email": "chair@barwonwaterfront.example",
+    "subscribedAt": "2025-08-01",
+    "createdAt": "2025-08-01"
+  }
+]

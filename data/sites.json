@@ -1,18 +1,242 @@
 [
-    {
-      "id": "historic-post-office",
-      "name": "Historic Post Office",
-      "sponsor": "City Heritage Council",
-      "buildYear": "1884",
-      "mapsQuery": "Historic+Post+Office",
-      "description": "Constructed during the height of late 19th-century regional expansion, this architectural landmark served as the primary communications hub for local settlers and traders alike. Built using locally quarried sandstone and classic Victorian-era detailing, the facility operated continuously for nearly eight decades before being preserved as a public heritage museum.",
-      "primaryImage": "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=800&q=80",
-      "thumbnails": [
-        "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=400&q=80",
-        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=400&q=80",
-        "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80"
-      ],
-      "oldestPhoto": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80",
-      "oldestCaption": "Archival capture showing the original timber facade prior to the 1905 stone extension."
-    }
-  ]
+  {
+    "id": "moorabool-wool-exchange",
+    "organisationId": "city-of-greater-geelong",
+    "name": "Moorabool Wool Exchange",
+    "buildYear": "1872",
+    "yearStart": 1872,
+    "yearEnd": 1872,
+    "circa": false,
+    "category": "Civic",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Geelong",
+    "mapArea": "Central",
+    "mapsQuery": "Moorabool Street, Geelong, Victoria, Australia",
+    "description": "Built in 1872 on the west side of Moorabool Street, the exchange gave Barrabool Hills growers a town room in which to sell a season's clip. The bluestone front opened into a timber sale hall lit by a lantern roof, so afternoon auctions could run without gas. Buyers who came down on the Melbourne train chalked their lots on the floorboards and settled accounts in the clerk's room above the yard. A sample-room fire in 1896 destroyed the earliest sale books; the year cut into the rebuilt facade is the date used here. The exchange stopped regular wool sales in the 1930s and was later used as a furniture store. The sale bell is said to have rung once for a local clip and twice when a shipping lot was called.",
+    "facts": [
+      "The sale bell rang once for a local clip and twice for a shipping lot.",
+      "The 1896 sample-room fire destroyed the earliest sale books."
+    ],
+    "furtherReading": "https://example.com/moorabool-wool-exchange",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "1-001", "url": "images/1-001.jpg", "caption": "Street frontage", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-002", "url": "images/1-002.jpg", "caption": "Neighbouring facades", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-003", "url": "images/1-003.jpg", "caption": "Rebuilt street elevation", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-004", "url": "images/1-004.jpg", "caption": "Window from the earlier front, before the 1896 rebuilding.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "eastern-park-fernery",
+    "organisationId": "city-of-greater-geelong",
+    "name": "Eastern Park Fernery",
+    "buildYear": "1888",
+    "yearStart": 1888,
+    "yearEnd": 1888,
+    "circa": false,
+    "category": "Recreation",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "East Geelong",
+    "mapArea": "Valley",
+    "mapsQuery": "Eastern Park, East Geelong, Victoria, Australia",
+    "description": "The fernery was completed in 1888 as a shaded walk on the East Geelong side of Eastern Park, where a cool garden was wanted that did not depend on the beach windbreaks. Iron posts carried a timber lattice, and tree-fern trunks were packed into beds fed by a trickle tank. Sunday crowds used the walk as a meeting place before the band rotunda, and the park curator wrote the plant labels by hand. Storms in 1904 lifted part of the lattice; the posts were reset rather than replaced, which is why the ironwork does not all match. By the 1950s the beds had thinned and the tank was dry. The remaining posts still mark the oval of the original path.",
+    "facts": [
+      "A curator's notebook from 1891 lists the ferns by bed.",
+      "Several of those plant names are no longer in use."
+    ],
+    "furtherReading": "https://example.com/eastern-park-fernery",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "1-005", "url": "images/1-005.jpg", "caption": "Shaded walk", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-006", "url": "images/1-006.jpg", "caption": "Canopy above the fern beds", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-007", "url": "images/1-007.jpg", "caption": "The park edge", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "1-008", "url": "images/1-008.jpg", "caption": "The gully after the 1904 storms lifted the lattice.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "newtown-signalmans-cottage",
+    "organisationId": "geelong-historical-society",
+    "name": "Newtown Signalman's Cottage",
+    "buildYear": "1881",
+    "yearStart": 1881,
+    "yearEnd": 1881,
+    "circa": false,
+    "category": "Transport",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Newtown",
+    "mapArea": "Heights",
+    "mapsQuery": "Newtown, Geelong, Victoria, Australia",
+    "description": "The cottage was built in 1881 for the signalman who watched the level crossing where the Newtown hill road met the railway. Two rooms and a rear lean-to faced the line, with a raised window so the gates could be seen from the kitchen table. The cottage held the gate lamps, a flag locker, and the log in which each train was marked late or on time. When the crossing was rebuilt with longer gates in 1910, the lean-to became a lamp room and the family stayed on. The signalman was withdrawn after automatic gates were installed, and the cottage was later sold with the reserve. The winch platform is still described on the 1881 contract drawing held by the society.",
+    "facts": [
+      "The kitchen window was raised so the gates could be seen from the table.",
+      "The 1881 contract drawing still shows the gate-winch platform."
+    ],
+    "furtherReading": "https://example.com/newtown-signalmans-cottage",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "2-001", "url": "images/2-001.jpg", "caption": "Cottage from the road", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-002", "url": "images/2-002.jpg", "caption": "Front path", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-003", "url": "images/2-003.jpg", "caption": "Side of the house", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-004", "url": "images/2-004.jpg", "caption": "The earlier timber front, before the 1910 gate works.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "rippleside-bathing-pavilion",
+    "organisationId": "geelong-historical-society",
+    "name": "Rippleside Bathing Pavilion",
+    "buildYear": "1926",
+    "yearStart": 1926,
+    "yearEnd": 1926,
+    "circa": false,
+    "category": "Recreation",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Rippleside",
+    "mapArea": "Waterfront",
+    "mapsQuery": "Rippleside, Geelong, Victoria, Australia",
+    "description": "Opened in 1926, the Rippleside pavilion gave Corio Bay bathers a place to change away from the open beach. Timber dressing rooms ran either side of a central kiosk, and a covered ramp led down toward the baths. The council let the kiosk for summer drinks and hired out towels by the hour. A 1932 storm pushed weed and sand into the lower rooms, and the ramp was raised the following winter. Families from Rippleside and North Geelong used the pavilion on either side of the working day at the nearby yards. Swimming at the baths faded after the war, and the dressing rooms were closed in stages. The painted bay numbers on the doors are the detail most often remembered.",
+    "facts": [
+      "Towels were hired by the hour from the kiosk.",
+      "The ramp was raised after the 1932 storm filled the lower rooms with sand."
+    ],
+    "furtherReading": "https://example.com/rippleside-bathing-pavilion",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "2-005", "url": "images/2-005.jpg", "caption": "Beach below the pavilion", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-006", "url": "images/2-006.jpg", "caption": "Shore line", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-007", "url": "images/2-007.jpg", "caption": "Bay front", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "2-008", "url": "images/2-008.jpg", "caption": "Open water beyond the ramp, before it was raised in 1933.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "ormond-salt-store",
+    "organisationId": "south-barwon-historical-society",
+    "name": "Ormond Salt Store",
+    "buildYear": "1857",
+    "yearStart": 1855,
+    "yearEnd": 1859,
+    "circa": true,
+    "category": "Industrial",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "South Geelong",
+    "mapArea": "River",
+    "mapsQuery": "South Geelong, Victoria, Australia",
+    "description": "The store beside the Barwon at South Geelong is dated about 1857, and the timber frame was likely raised sometime between 1855 and 1859. Salt from the shallow pans was bagged here before it went up to the river wharf or out by dray. The building is a long weatherboard shed on stumps, with loft doors in the gable and a brick hearth that was only ever used for drying wet sacks. Ledger notes from the 1860s disagree on the first season, which is why the year is given as approximate. A flood in 1880 left a tidemark that later keepers used as a shelf line. The store passed from the Ormond pans to a chaff merchant and then stood empty. The loft doors and that flood line are the clearest traces of the first use.",
+    "facts": [
+      "The hearth was used to dry wet sacks, not to process the salt.",
+      "Ledgers disagree on the first season, so the year is a range."
+    ],
+    "furtherReading": "https://example.com/ormond-salt-store",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "3-001", "url": "images/3-001.jpg", "caption": "Store from the yard", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-002", "url": "images/3-002.jpg", "caption": "Loading floor", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-003", "url": "images/3-003.jpg", "caption": "Interior of the shed", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-004", "url": "images/3-004.jpg", "caption": "Sack room, with the 1880 flood line used later as a shelf.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "belmont-horse-tram-shed",
+    "organisationId": "south-barwon-historical-society",
+    "name": "Belmont Horse Tram Shed",
+    "buildYear": "1912",
+    "yearStart": 1912,
+    "yearEnd": 1912,
+    "circa": false,
+    "category": "Transport",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Belmont",
+    "mapArea": "River",
+    "mapsQuery": "Belmont, Geelong, Victoria, Australia",
+    "description": "The shed was put up in 1912 at the Belmont end of the river crossing to house the horse trams that waited out of the sun between runs. Three stalls, a feed room, and a small office faced the approach to the bridge. Drivers signed the board in the office, and the far stall was kept for the horse that worked the last evening trip. Motor buses took the passengers in the 1920s, but the shed stayed in use for maintenance carts. The office still has the painted run numbers above the pegs. Later interviews from the Belmont side remember the evening horse by name, though those names do not appear in the 1912 minute that approved the shed. It is a plain timber building, valued because its first use is still easy to read.",
+    "facts": [
+      "The far stall was reserved for the horse on the last evening trip.",
+      "Painted run numbers remain above the pegs in the office."
+    ],
+    "furtherReading": "https://example.com/belmont-horse-tram-shed",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "3-005", "url": "images/3-005.jpg", "caption": "Shed from the street", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-006", "url": "images/3-006.jpg", "caption": "Side wall", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-007", "url": "images/3-007.jpg", "caption": "Street elevation", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "3-008", "url": "images/3-008.jpg", "caption": "The road in from the bridge, about the year the shed opened.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "western-beach-kiosk",
+    "organisationId": "barwon-waterfront-trust",
+    "name": "Western Beach Kiosk",
+    "buildYear": "1928",
+    "yearStart": 1928,
+    "yearEnd": 1928,
+    "circa": false,
+    "category": "Recreation",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Geelong",
+    "mapArea": "Waterfront",
+    "mapsQuery": "Western Beach, Geelong, Victoria, Australia",
+    "description": "The Western Beach Kiosk opened in 1928 as a small timber counter facing the bay, with a verandah deep enough for a queue out of the sea wind. It sold tea, ices, and towels to people using the baths, and the morning papers were kept under the counter for the promenade. The trust repainted the verandah posts each spring in the same green. During the 1940s the kiosk shortened its hours and stopped hiring towels, then closed the counter and left the shell for shelter. The serving window and the faded price board are still described by people who walked the beach. This sample record stays on file so the page can return in full if the subscription is renewed.",
+    "facts": [
+      "Towels and the morning papers were kept under the same counter.",
+      "The verandah posts were repainted green each spring."
+    ],
+    "furtherReading": "https://example.com/western-beach-kiosk",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "4-001", "url": "images/4-001.jpg", "caption": "Kiosk from the promenade", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-002", "url": "images/4-002.jpg", "caption": "Street side", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-003", "url": "images/4-003.jpg", "caption": "Verandah front", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-004", "url": "images/4-004.jpg", "caption": "The beach front before the 1928 kiosk.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "north-shore-grain-ledger",
+    "organisationId": "barwon-waterfront-trust",
+    "name": "North Shore Grain Ledger Office",
+    "buildYear": "1934",
+    "yearStart": 1934,
+    "yearEnd": 1934,
+    "circa": false,
+    "category": "Civic",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "North Geelong",
+    "mapArea": "Industrial North",
+    "mapsQuery": "North Shore, Geelong, Victoria, Australia",
+    "description": "The ledger office was built in 1934 beside the North Shore sidings so grain receipts could be written up without carrying the books down to the wharf. Two clerks shared a long desk under a north window, and the bound ledgers stood on open shelves along the inner wall. Each truck was given a chalk number that had to match the line in the book before a load left the yard. The office survived the later concrete elevators and was used for stores until the siding closed. Dust from the grain still marks the shelf edges. The sample record keeps the description on file while the public page shows only the name and the year.",
+    "facts": [
+      "A chalk number on the truck had to match the line in the ledger.",
+      "Grain dust still marks the edges of the old shelves."
+    ],
+    "furtherReading": "https://example.com/north-shore-grain-ledger",
+    "sources": ["Sample record prepared for the TouristQR demonstration catalogue."],
+    "createdAt": "2026-05-01",
+    "photos": [
+      {"code": "4-005", "url": "images/4-005.jpg", "caption": "Record room", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-006", "url": "images/4-006.jpg", "caption": "Clerks' tables", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-007", "url": "images/4-007.jpg", "caption": "Shelves", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "4-008", "url": "images/4-008.jpg", "caption": "The office front as it stood in the 1930s.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  }
+]
