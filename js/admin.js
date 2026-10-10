@@ -1,10 +1,13 @@
-import { sitePublicUrl } from "./config.js";
+import { assetUrl, liveSiteUrl, sitePublicUrl } from "./config.js";
 import {
+  comparePhotoCodes,
   decadeLabel,
   findOrganisation,
   isListed,
+  mergeById,
   subscriptionState,
 } from "./model.js";
+import { clearLocal, LOCAL_ORGS, LOCAL_SITES, readLocal, writeLocal } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -106,7 +109,12 @@ function renderOrgs() {
       event.preventDefault();
       org.email = email.value.trim();
       org.subscribedAt = date.value;
-      await saveOrganisations();
+      try {
+        await saveOrganisations();
+      } catch (error) {
+        keepLocalCopy();
+        setStatus(`${error.message} The sponsor change is kept in this browser.`);
+      }
     });
     list.append(card);
   });
@@ -157,7 +165,7 @@ function renderPhotoRows() {
     const row = document.createElement("div");
     row.className = "border border-slate-200 rounded-xl p-3 grid grid-cols-[72px_1fr] gap-3";
     const image = document.createElement("img");
-    image.src = photo.preview || photo.url;
+    image.src = photoSrc(photo.preview || photo.url);
     image.alt = "";
     image.className = "w-[72px] h-[72px] object-cover rounded-lg bg-slate-200";
     const fields = document.createElement("div");
@@ -225,7 +233,7 @@ function renderLibrary(photos) {
     button.type = "button";
     button.className = "w-full flex items-center gap-3 text-left border border-slate-200 rounded-xl p-2 hover:bg-slate-50";
     const image = document.createElement("img");
-    image.src = photo.url;
+    image.src = photoSrc(photo.url);
     image.alt = "";
     image.className = "w-14 h-14 object-cover rounded-lg bg-slate-200";
     const text = document.createElement("span");
@@ -242,10 +250,95 @@ function renderLibrary(photos) {
   });
 }
 
+function photoSrc(url) {
+  if (!url || /^(https?:|data:|blob:)/.test(url)) return url || "";
+  const [path, query] = String(url).split("?");
+  const full = assetUrl(path);
+  return query ? `${full}?${query}` : full;
+}
+
+function libraryFromSites() {
+  const rows = [];
+  for (const site of sites) {
+    const org = findOrganisation(organisations, site.organisationId);
+    for (const photo of photosInOrder(site.photos)) {
+      rows.push({
+        ...photo,
+        siteId: site.id,
+        siteName: site.name,
+        sponsorNumber: org?.number ?? null,
+      });
+    }
+  }
+  return rows;
+}
+
+function photosInOrder(photos) {
+  return [...(photos || [])].sort((a, b) => comparePhotoCodes(a.code, b.code));
+}
+
+function renderLibraryFromSites() {
+  renderLibrary(libraryFromSites());
+}
+
 async function loadLibrary() {
-  const response = await fetch("/api/photos");
-  if (!response.ok) return;
-  renderLibrary(await response.json());
+  try {
+    const response = await fetch(assetUrl("api/photos"));
+    if (response.ok) {
+      renderLibrary(await response.json());
+      return;
+    }
+  } catch {
+    // The published site has no photo API. The catalogue list is enough.
+  }
+  renderLibraryFromSites();
+}
+
+function slugify(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+}
+
+function renderAllQr() {
+  const list = $("qr-list");
+  list.replaceChildren();
+  if (!sites.length) {
+    const empty = document.createElement("p");
+    empty.className = "text-sm text-slate-500 col-span-full";
+    empty.textContent = "No sites yet. Enter one above and its QR code will appear here.";
+    list.append(empty);
+    return;
+  }
+  sites.forEach((site) => {
+    const card = document.createElement("div");
+    card.className = "border border-slate-200 rounded-xl p-3 text-center space-y-2";
+    const canvas = document.createElement("canvas");
+    canvas.className = "mx-auto";
+    const title = document.createElement("p");
+    title.className = "text-sm font-medium";
+    title.textContent = site.name;
+    const address = document.createElement("p");
+    address.className = "text-[11px] text-slate-500 break-all font-mono";
+    const target = sitePublicUrl(site.id);
+    address.textContent = target;
+    const download = document.createElement("a");
+    download.className = "inline-block bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg";
+    download.textContent = "Download";
+    card.append(canvas, title, address, download);
+    list.append(card);
+    if (typeof QRious === "undefined") return;
+    const qr = new QRious({ element: canvas, value: target, size: 160 });
+    download.href = qr.toDataURL();
+    download.download = `${site.id}-qr-code.png`;
+  });
+}
+
+function clearQr() {
+  const canvas = $("qr-canvas");
+  canvas.width = 220;
+  canvas.height = 220;
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  $("qr-target-url").textContent = "Enter a site id to show its QR code.";
+  $("download-qr").removeAttribute("href");
 }
 
 function fillForm(site) {
@@ -314,7 +407,7 @@ async function uploadPhoto(file, code) {
   const blob = await resizeImageFile(file);
   const params = new URLSearchParams({ sponsor: String(org.number) });
   if (code) params.set("code", code);
-  const response = await fetch(`/api/media?${params}`, {
+  const response = await fetch(`${assetUrl("api/media")}?${params}`, {
     method: "POST",
     headers: { "Content-Type": "image/jpeg" },
     body: blob,
@@ -367,27 +460,34 @@ function formPayload() {
 }
 
 async function saveSites(nextSites) {
-  const response = await fetch("/api/sites", {
+  const response = await fetch(assetUrl("api/sites"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(nextSites),
   });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "The site list was not saved.");
-  sites = body;
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "This page cannot write the shared catalogue.");
+  }
+  sites = await response.json();
+  clearLocal(LOCAL_SITES);
   renderSelector();
+  renderAllQr();
   await loadLibrary();
 }
 
 async function saveOrganisations() {
-  const response = await fetch("/api/organisations", {
+  const response = await fetch(assetUrl("api/organisations"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(organisations),
   });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "The sponsor was not saved.");
-  organisations = body;
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "This page cannot write the shared catalogue.");
+  }
+  organisations = await response.json();
+  clearLocal(LOCAL_ORGS);
   renderOrgs();
   renderOrgOptions();
   renderSelector();
@@ -395,9 +495,17 @@ async function saveOrganisations() {
   setStatus("Sponsor saved.");
 }
 
-function generateQR(id) {
+function keepLocalCopy() {
+  writeLocal(LOCAL_SITES, sites);
+  writeLocal(LOCAL_ORGS, organisations);
+}
+
+function generateQR(id, { scroll = false } = {}) {
+  if (!/^[a-z0-9-]{1,80}$/.test(id) || typeof QRious === "undefined") {
+    clearQr();
+    return;
+  }
   const target = sitePublicUrl(id);
-  $("qr-section").classList.remove("hidden");
   $("qr-target-url").textContent = target;
   const qr = new QRious({
     element: $("qr-canvas"),
@@ -406,6 +514,7 @@ function generateQR(id) {
   });
   $("download-qr").href = qr.toDataURL();
   $("download-qr").download = `${id}-qr-code.png`;
+  if (scroll) $("qr-section").scrollIntoView({ block: "nearest" });
 }
 
 $("site-selector").addEventListener("change", () => {
@@ -414,9 +523,14 @@ $("site-selector").addEventListener("change", () => {
 
 $("new-site").addEventListener("click", () => {
   $("site-selector").value = "";
-  $("qr-section").classList.add("hidden");
   fillForm(null);
-  setStatus("New site. Its id stays the same once you save it.");
+  clearQr();
+  setStatus("New site. Enter an id and a name, and its QR code will appear below.");
+});
+
+$("siteId").addEventListener("input", () => {
+  if ($("siteId").readOnly) return;
+  generateQR($("siteId").value.trim());
 });
 
 ["siteYear", "siteYearStart", "siteCreated", "siteOrg", "siteCirca"].forEach((id) => {
@@ -450,6 +564,14 @@ $("add-photo").addEventListener("change", async (event) => {
 $("site-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = formPayload();
+  if (!/^[a-z0-9-]{1,80}$/.test(payload.id)) {
+    setStatus("Use a site id of lowercase letters, numbers, and hyphens.");
+    return;
+  }
+  if (!payload.name) {
+    setStatus("A site needs a name.");
+    return;
+  }
   if (!activeSiteId && sites.some((site) => site.id === payload.id)) {
     setStatus("That site id is already used.");
     return;
@@ -457,15 +579,62 @@ $("site-form").addEventListener("submit", async (event) => {
   const next = activeSiteId
     ? sites.map((site) => (site.id === activeSiteId ? payload : site))
     : [...sites, payload];
+  generateQR(payload.id, { scroll: true });
   try {
     await saveSites(next);
     activeSiteId = payload.id;
     $("site-selector").value = payload.id;
     $("siteId").readOnly = true;
-    generateQR(payload.id);
-    setStatus("Site saved to the shared catalogue.");
+    setStatus("Site saved. The QR code above is ready to download.");
   } catch (error) {
-    setStatus(error.message);
+    sites = next;
+    activeSiteId = payload.id;
+    keepLocalCopy();
+    renderSelector();
+    renderAllQr();
+    renderLibraryFromSites();
+    $("site-selector").value = payload.id;
+    $("siteId").readOnly = true;
+    setStatus(`${error.message} The QR code is ready to download, and this browser can open the site with View live site.`);
+  }
+});
+
+$("new-sponsor").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = $("new-sponsor-name").value.trim();
+  const email = $("new-sponsor-email").value.trim();
+  const id = slugify(name);
+  if (!id) {
+    setStatus("Enter a sponsor name.");
+    return;
+  }
+  if (organisations.some((org) => org.id === id)) {
+    setStatus("That sponsor is already in the list.");
+    $("siteOrg").value = id;
+    return;
+  }
+  const number = Math.max(0, ...organisations.map((org) => Number(org.number) || 0)) + 1;
+  organisations.push({
+    number,
+    id,
+    name,
+    type: "Organisation",
+    email,
+    subscribedAt: todayISO(),
+    createdAt: todayISO(),
+  });
+  $("new-sponsor").reset();
+  renderOrgOptions();
+  $("siteOrg").value = id;
+  refreshComputed();
+  try {
+    await saveOrganisations();
+  } catch (error) {
+    keepLocalCopy();
+    renderOrgs();
+    renderOrgOptions();
+    $("siteOrg").value = id;
+    setStatus(`${error.message} ${name} is saved in this browser as sponsor ${number}.`);
   }
 });
 
@@ -477,37 +646,58 @@ $("delete-site").addEventListener("click", async () => {
     await saveSites(sites.filter((item) => item.id !== activeSiteId));
     activeSiteId = "";
     fillForm(null);
-    $("qr-section").classList.add("hidden");
+    clearQr();
     setStatus("Site deleted from the catalogue.");
   } catch (error) {
+    sites = sites.filter((item) => item.id !== activeSiteId);
+    keepLocalCopy();
+    renderSelector();
+    renderAllQr();
+    renderLibraryFromSites();
+    activeSiteId = "";
+    fillForm(null);
+    clearQr();
     setStatus(error.message);
   }
 });
 
 $("view-live").addEventListener("click", () => {
-  const id = activeSiteId || sites[0]?.id;
-  if (!id) return;
-  window.open(`index.html?site=${encodeURIComponent(id)}`, "_blank", "noopener");
+  const id = $("site-selector").value || $("siteId").value.trim() || sites[0]?.id;
+  if (!id) {
+    setStatus("Choose a site, or enter a site id, to view it.");
+    return;
+  }
+  const typedId = $("siteId").value.trim();
+  if (typedId === id && !sites.some((site) => site.id === id) && $("siteName").value.trim()) {
+    sites = [...sites, formPayload()];
+    keepLocalCopy();
+    renderSelector();
+    renderAllQr();
+  }
+  window.open(liveSiteUrl(id), "_blank", "noopener");
 });
 
 async function init() {
   try {
     const [siteResponse, orgResponse] = await Promise.all([
-      fetch("/api/sites"),
-      fetch("/api/organisations"),
+      fetch(assetUrl("data/sites.json")),
+      fetch(assetUrl("data/organisations.json")),
     ]);
     if (!siteResponse.ok || !orgResponse.ok) throw new Error("missing");
-    sites = await siteResponse.json();
-    organisations = await orgResponse.json();
+    sites = mergeById(await siteResponse.json(), readLocal(LOCAL_SITES));
+    organisations = mergeById(await orgResponse.json(), readLocal(LOCAL_ORGS));
   } catch {
-    setStatus("Open this console through node server.mjs so changes write to the shared catalogue.");
+    setStatus("The site catalogue could not be loaded.");
     return;
   }
   renderOrgs();
   renderOrgOptions();
   renderSelector();
-  fillForm(null);
-  await loadLibrary();
+  renderAllQr();
+  renderLibraryFromSites();
+  if (sites[0]) loadSite(sites[0].id);
+  else fillForm(null);
+  loadLibrary();
 }
 
 init();

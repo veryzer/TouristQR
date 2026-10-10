@@ -22,12 +22,17 @@
             <h2 class="font-bold text-slate-900">Sponsors</h2>
             <p class="text-xs text-slate-500 leading-relaxed">A listing stays on the public search for 12 months, and through a grace month. After 13 months the address still opens, showing only the name and year. South Barwon is in its grace month. Barwon Waterfront Trust is archived.</p>
             <div id="org-list" class="space-y-3"></div>
+            <form id="new-sponsor" class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 pt-2">
+                <input id="new-sponsor-name" type="text" required placeholder="New sponsor name" aria-label="New sponsor name" class="border rounded-xl p-2 text-sm">
+                <input id="new-sponsor-email" type="email" required placeholder="sponsor@example.com" aria-label="New sponsor email" class="border rounded-xl p-2 text-sm">
+                <button type="submit" class="bg-slate-800 text-white text-xs font-medium px-4 py-2 rounded-xl">Add sponsor</button>
+            </form>
         </section>
 
         <section class="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between gap-3">
             <div class="min-w-0">
                 <label for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site to modify</label>
-                <select id="site-selector" class="border rounded-xl p-2 text-sm w-full max-w-xs bg-slate-50"></select>
+                <select id="site-selector" class="border rounded-xl p-2 text-sm w-full bg-slate-50"></select>
             </div>
             <button type="button" id="new-site" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium shrink-0">+ Next new site</button>
         </section>
@@ -145,14 +150,19 @@
             </form>
         </section>
 
-        <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 hidden text-center">
-            <h2 class="font-bold text-slate-900 text-left border-b pb-2">QR code</h2>
+        <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 text-center">
+            <h2 class="font-bold text-slate-900 text-left border-b pb-2">QR code for this site</h2>
             <div class="flex flex-col items-center space-y-3">
                 <canvas id="qr-canvas" class="border p-2 rounded-xl bg-white shadow-sm"></canvas>
-                <p id="qr-target-url" class="text-xs text-slate-500 font-mono break-all"></p>
+                <p id="qr-target-url" class="text-xs text-slate-500 font-mono break-all">Choose a site, or enter a site id, to show its QR code.</p>
                 <p class="text-xs text-slate-500">This code uses the GitHub Pages address. Change js/config.js when touristqr.com is ready, then generate the code again.</p>
                 <a id="download-qr" download="tourist-qr.png" class="bg-slate-800 text-white text-xs px-4 py-2 rounded-xl font-medium inline-block">Download QR image</a>
             </div>
+        </section>
+
+        <section class="bg-white p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">QR codes for entered sites</h2>
+            <div id="qr-list" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
         </section>
 
         <section class="bg-white p-6 rounded-2xl shadow-sm space-y-3">
@@ -162,9 +172,4 @@
     </div>
     <script type="module" src="js/admin.js"></script>
 </body>
-</html>
-
-</html>
-</html>
-</html>
 </html>

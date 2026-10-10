@@ -222,14 +222,43 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/organisations" && req.method === "PUT") {
       const incoming = JSON.parse((await readBody(req, 1_000_000)).toString("utf8"));
+      if (!Array.isArray(incoming)) {
+        sendJson(res, 400, { error: "Expected a list of sponsors." });
+        return;
+      }
       const current = readJson("organisations.json");
       const next = current.map((org) => {
         const edited = incoming.find((item) => item.id === org.id);
         if (!edited) return org;
         const email = String(edited.email || org.email).trim();
+        const name = String(edited.name || org.name).trim() || org.name;
         const subscribedAt = /^\d{4}-\d{2}-\d{2}$/.test(edited.subscribedAt) ? edited.subscribedAt : org.subscribedAt;
-        return { ...org, email, subscribedAt };
+        return { ...org, email, name, subscribedAt };
       });
+      for (const item of incoming) {
+        if (next.some((org) => org.id === item.id)) continue;
+        const id = String(item.id || "").trim();
+        const name = String(item.name || "").trim();
+        const email = String(item.email || "").trim();
+        if (!/^[a-z0-9-]{1,80}$/.test(id) || !name || !email) {
+          sendJson(res, 400, { error: "A new sponsor needs a name and an email." });
+          return;
+        }
+        const requested = Number(item.number);
+        const sponsorNumber = Number.isInteger(requested) && requested > 0 && !next.some((org) => org.number === requested)
+          ? requested
+          : Math.max(0, ...next.map((org) => Number(org.number) || 0)) + 1;
+        const subscribedAt = /^\d{4}-\d{2}-\d{2}$/.test(item.subscribedAt) ? item.subscribedAt : new Date().toISOString().slice(0, 10);
+        next.push({
+          number: sponsorNumber,
+          id,
+          name,
+          type: String(item.type || "Organisation"),
+          email,
+          subscribedAt,
+          createdAt: /^\d{4}-\d{2}-\d{2}$/.test(item.createdAt) ? item.createdAt : subscribedAt,
+        });
+      }
       writeJson("organisations.json", next);
       logActivity({ action: "save-organisations" });
       sendJson(res, 200, next);

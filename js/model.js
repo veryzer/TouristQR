@@ -26,6 +26,22 @@ export function subscriptionState(startIso, now = new Date()) {
   return "active";
 }
 
+export function mergeById(base, extra) {
+  const map = new Map();
+  const order = [];
+  for (const item of base || []) {
+    if (!item?.id || map.has(item.id)) continue;
+    map.set(item.id, item);
+    order.push(item.id);
+  }
+  for (const item of extra || []) {
+    if (!item?.id) continue;
+    if (!map.has(item.id)) order.push(item.id);
+    map.set(item.id, { ...map.get(item.id), ...item });
+  }
+  return order.map((id) => map.get(id));
+}
+
 export function findOrganisation(organisations, id) {
   return organisations.find((org) => org.id === id) || null;
 }

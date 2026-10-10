@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { appPath } from "../js/config.js";
 import {
   formatPhotoCode,
+  mergeById,
   nextPhotoCode,
   parsePhotoCode,
   subscriptionState,
@@ -24,6 +26,19 @@ test("a subscription is archived after 13 months", () => {
 test("a new subscription is active", () => {
   assert.equal(subscriptionState("2026-03-01", october), "active");
   assert.equal(subscriptionState("2026-06-01", october), "active");
+});
+
+test("admin addresses stay inside the GitHub project", () => {
+  assert.equal(appPath("/TouristQR/admin"), "/TouristQR/");
+  assert.equal(appPath("/TouristQR/admin/"), "/TouristQR/");
+  assert.equal(appPath("/TouristQR/admin.html"), "/TouristQR/");
+  assert.equal(appPath("/TouristQR/index.html"), "/TouristQR/");
+  assert.equal(appPath("/"), "/");
+});
+
+test("local records merge onto the published catalogue", () => {
+  const merged = mergeById([{ id: "a", name: "Published" }], [{ id: "a", name: "Edited" }, { id: "b", name: "New" }]);
+  assert.deepEqual(merged, [{ id: "a", name: "Edited" }, { id: "b", name: "New" }]);
 });
 
 test("photo codes sort by sponsor, then reference", () => {

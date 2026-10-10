@@ -1,11 +1,13 @@
-import { sitePublicUrl } from "./config.js";
+import { assetUrl, sitePublicUrl } from "./config.js";
 import {
   displayYear,
   findOrganisation,
   isListed,
+  mergeById,
   photosInCodeOrder,
   searchSites,
 } from "./model.js";
+import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js";
 
 const FAVOURITES = "touristqr_favourites";
 const VISITS = "touristqr_visits";
@@ -210,17 +212,49 @@ function showCurrent() {
   if (!state.results.length) {
     state.current = null;
     document.title = "TouristQR";
-    $("place-name").textContent = state.browsing === "results" ? "No matches" : "Nothing saved here";
+    const message = emptyMessage();
+    $("place-name").textContent = message.title;
     $("build-year").textContent = "";
     $("result-label").textContent = "";
+    $("view-empty").querySelector("p").textContent = message.body;
     setSponsor(null, null);
-    showModes(state.browsing === "results" ? "empty" : "empty");
-    $("view-empty").querySelector("p").textContent = state.browsing === "results"
-      ? "Nothing public matches that search. Try a suburb, a decade such as 1880s, or part of a name."
-      : "Nothing is stored on this phone for that list yet.";
+    setNote(message.body);
+    showModes("empty");
+    $("place-name").scrollIntoView({ block: "start" });
     return;
   }
   openSite(state.results[state.index]);
+}
+
+function emptyMessage() {
+  if (state.browsing === "tour" && !readJson(FAVOURITES, []).length) {
+    return {
+      title: "You have no favourites yet",
+      body: "You have no favourites yet. Save a place, then add it to a tour.",
+    };
+  }
+  if (state.browsing === "tour") {
+    return {
+      title: "You have no tour stops yet",
+      body: "You have no tour stops yet. Open a place and choose Add to tour.",
+    };
+  }
+  if (state.browsing === "saved") {
+    return {
+      title: "You have no favourites yet",
+      body: "You have no favourites yet. Open a place and tap Save.",
+    };
+  }
+  if (state.browsing === "visited") {
+    return {
+      title: "No visits yet",
+      body: "Places you open on this phone will be listed here.",
+    };
+  }
+  return {
+    title: "No matches",
+    body: "Nothing public matches that search. Try a suburb, a decade such as 1880s, or part of a name.",
+  };
 }
 
 function navigate(direction) {
@@ -318,12 +352,13 @@ function bindPhotoSwipe() {
 
 async function init() {
   try {
-    const [sites, organisations] = await Promise.all([
-      fetch("data/sites.json").then((response) => response.json()),
-      fetch("data/organisations.json").then((response) => response.json()),
+    const [siteResponse, orgResponse] = await Promise.all([
+      fetch(assetUrl("data/sites.json")),
+      fetch(assetUrl("data/organisations.json")),
     ]);
-    state.sites = sites;
-    state.organisations = organisations;
+    if (!siteResponse.ok || !orgResponse.ok) throw new Error("missing");
+    state.sites = mergeById(await siteResponse.json(), readLocal(LOCAL_SITES));
+    state.organisations = mergeById(await orgResponse.json(), readLocal(LOCAL_ORGS));
   } catch {
     $("place-name").textContent = "Sites unavailable";
     $("result-label").textContent = "Start the app with node server.mjs so the shared catalogue can load.";
