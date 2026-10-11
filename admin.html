@@ -39,8 +39,8 @@
 
         <section class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
             <h2 class="font-bold text-slate-900 border-b pb-2">Add / modify historic site</h2>
-            <p id="admin-status" class="text-sm text-slate-600" role="status"></p>
-            <form id="site-form" class="space-y-4">
+            <p id="admin-status" class="text-sm rounded-xl px-3 py-2 border hidden" role="alert" aria-live="polite"></p>
+            <form id="site-form" class="space-y-4" novalidate>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteId">Site ID (permanent)</label>

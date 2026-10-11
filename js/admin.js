@@ -3,8 +3,11 @@ import {
   comparePhotoCodes,
   decadeLabel,
   findOrganisation,
+  formatPhotoCode,
   isListed,
   mergeById,
+  nextPhotoCode,
+  parsePhotoCode,
   subscriptionState,
 } from "./model.js";
 import { clearLocal, LOCAL_ORGS, LOCAL_SITES, readLocal, writeLocal } from "./storage.js";
@@ -16,8 +19,71 @@ let sites = [];
 let draftPhotos = [];
 let activeSiteId = "";
 
-function setStatus(message) {
-  $("admin-status").textContent = message || "";
+const STATUS_CLASSES = [
+  "hidden", "border", "bg-red-50", "text-red-800", "border-red-200",
+  "bg-green-50", "text-green-800", "border-green-200",
+  "bg-amber-50", "text-amber-900", "border-amber-200", "text-slate-600",
+];
+
+function setStatus(message, type = "info") {
+  const el = $("admin-status");
+  el.classList.remove(...STATUS_CLASSES);
+  el.textContent = message || "";
+  if (!message) {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.add("border");
+  if (type === "error") el.classList.add("bg-red-50", "text-red-800", "border-red-200");
+  else if (type === "success") el.classList.add("bg-green-50", "text-green-800", "border-green-200");
+  else el.classList.add("bg-amber-50", "text-amber-900", "border-amber-200");
+  el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function clearFieldErrors() {
+  for (const id of ["siteId", "siteName", "siteOrg", "siteYear", "siteMaps", "siteDesc", "siteCreated"]) {
+    $(id)?.classList.remove("border-red-500", "ring-1", "ring-red-300");
+  }
+}
+
+function markInvalid(fieldId) {
+  const el = $(fieldId);
+  if (!el) return;
+  el.classList.add("border-red-500", "ring-1", "ring-red-300");
+  el.focus();
+}
+
+function validateSiteForm() {
+  const id = $("siteId").value.trim();
+  if (!id) return { ok: false, message: "Enter a permanent site id (for example old-mill).", fieldId: "siteId" };
+  if (!/^[a-z0-9-]{1,80}$/.test(id)) {
+    return { ok: false, message: "The site id can only use lowercase letters, numbers, and hyphens.", fieldId: "siteId" };
+  }
+  if (!$("siteName").value.trim()) return { ok: false, message: "Enter the place name.", fieldId: "siteName" };
+  if (!$("siteOrg").value) return { ok: false, message: "Choose a sponsor for this site.", fieldId: "siteOrg" };
+  if (!$("siteYear").value.trim()) return { ok: false, message: "Enter the build year (or an approximate year).", fieldId: "siteYear" };
+  if (!$("siteMaps").value.trim()) {
+    return { ok: false, message: "Enter a Google Maps search or address so visitors can open Navigate.", fieldId: "siteMaps" };
+  }
+  if (!$("siteDesc").value.trim()) return { ok: false, message: "Enter the site history text.", fieldId: "siteDesc" };
+  if (!$("siteCreated").value) return { ok: false, message: "Choose the listing created date.", fieldId: "siteCreated" };
+  if (!activeSiteId && sites.some((site) => site.id === id)) {
+    return { ok: false, message: "That site id is already used. Pick another id.", fieldId: "siteId" };
+  }
+  return { ok: true };
+}
+
+function allPhotoCodes() {
+  const codes = [];
+  for (const site of sites) {
+    for (const photo of site.photos || []) {
+      if (photo.code) codes.push(photo.code);
+    }
+  }
+  for (const photo of draftPhotos) {
+    if (photo.code) codes.push(photo.code);
+  }
+  return codes;
 }
 
 function todayISO() {
@@ -378,6 +444,10 @@ function loadSite(id) {
 }
 
 function resizeImageFile(file) {
+  const name = String(file.name || "").toLowerCase();
+  if (/\.(heic|heif)$/.test(name)) {
+    return Promise.reject(new Error("HEIC photos from an iPhone need to be converted to JPEG or PNG first (for example Save as JPEG in Photos)."));
+  }
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -389,16 +459,41 @@ function resizeImageFile(file) {
       canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
       canvas.toBlob((blob) => {
         URL.revokeObjectURL(url);
-        if (!blob) reject(new Error("This photograph could not be resized."));
+        if (!blob) reject(new Error("This photograph could not be resized. Try a smaller JPEG or PNG."));
         else resolve(blob);
       }, "image/jpeg", 0.82);
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Use a JPEG or PNG photograph."));
+      reject(new Error("This file could not be opened as a photograph. Use JPEG or PNG."));
     };
     image.src = url;
   });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read the photograph."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function savePhotoInBrowser(blob, sponsorNumber, code) {
+  const dataUrl = await blobToDataUrl(blob);
+  const assigned = code || nextPhotoCode(sponsorNumber, allPhotoCodes());
+  const parsed = parsePhotoCode(assigned);
+  if (!parsed || parsed.sponsorNumber !== sponsorNumber) {
+    throw new Error(`Photograph codes for this sponsor start with ${sponsorNumber}-`);
+  }
+  const finalCode = formatPhotoCode(parsed.sponsorNumber, parsed.reference);
+  return {
+    code: finalCode,
+    url: dataUrl,
+    preview: dataUrl,
+    stored: "browser",
+  };
 }
 
 async function uploadPhoto(file, code) {
@@ -407,31 +502,38 @@ async function uploadPhoto(file, code) {
   const blob = await resizeImageFile(file);
   const params = new URLSearchParams({ sponsor: String(org.number) });
   if (code) params.set("code", code);
-  const response = await fetch(`${assetUrl("api/media")}?${params}`, {
-    method: "POST",
-    headers: { "Content-Type": "image/jpeg" },
-    body: blob,
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "The photograph was not saved.");
-  return body;
+  try {
+    const response = await fetch(`${assetUrl("api/media")}?${params}`, {
+      method: "POST",
+      headers: { "Content-Type": "image/jpeg" },
+      body: blob,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok && body.code) {
+      return { ...body, url: body.url, preview: `${body.url}?t=${Date.now()}`, stored: "server" };
+    }
+  } catch {
+    // GitHub Pages and other static hosts have no upload API; keep the photo in this browser.
+  }
+  return savePhotoInBrowser(blob, org.number, code);
 }
 
 async function replacePhoto(index, file) {
   try {
-    setStatus("Resizing photograph…");
+    setStatus("Resizing photograph…", "info");
     const saved = await uploadPhoto(file, draftPhotos[index].code);
     draftPhotos[index] = {
       ...draftPhotos[index],
       code: saved.code,
       url: saved.url,
-      preview: `${saved.url}?t=${Date.now()}`,
+      preview: saved.preview || saved.url,
     };
     renderPhotoRows();
-    setStatus(`Replaced ${saved.code}. Save the site to keep it on the record.`);
+    const where = saved.stored === "server" ? "on the server" : "in this browser";
+    setStatus(`Replaced ${saved.code} ${where}. Click Save site to keep it on this record.`, "success");
     await loadLibrary();
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
 }
 
@@ -500,6 +602,15 @@ function keepLocalCopy() {
   writeLocal(LOCAL_ORGS, organisations);
 }
 
+function persistSitesLocally(nextSites, message) {
+  sites = nextSites;
+  keepLocalCopy();
+  renderSelector();
+  renderAllQr();
+  renderLibraryFromSites();
+  setStatus(message, "success");
+}
+
 function generateQR(id, { scroll = false } = {}) {
   if (!/^[a-z0-9-]{1,80}$/.test(id) || typeof QRious === "undefined") {
     clearQr();
@@ -542,60 +653,63 @@ $("add-photo").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
+  if (!selectedOrg()) {
+    setStatus("Choose a sponsor for this site before adding a photograph.", "error");
+    $("siteOrg").focus();
+    return;
+  }
   try {
-    setStatus("Resizing photograph to about 1200 pixels…");
+    setStatus("Resizing photograph to about 1200 pixels…", "info");
     const saved = await uploadPhoto(file);
     draftPhotos.push({
       code: saved.code,
       url: saved.url,
-      preview: `${saved.url}?t=${Date.now()}`,
+      preview: saved.preview || saved.url,
       caption: "",
       credit: "Demonstration photograph",
       kind: "current",
     });
     renderPhotoRows();
-    setStatus(`Filed as ${saved.code}. Save the site to attach it.`);
+    const where = saved.stored === "server" ? "saved on the server" : "attached in this browser";
+    setStatus(`Added ${saved.code} to this site (${where}). Click Save site when you are finished editing.`, "success");
     await loadLibrary();
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message, "error");
   }
 });
 
 $("site-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  clearFieldErrors();
+  const check = validateSiteForm();
+  if (!check.ok) {
+    setStatus(check.message, "error");
+    if (check.fieldId) markInvalid(check.fieldId);
+    return;
+  }
   const payload = formPayload();
-  if (!/^[a-z0-9-]{1,80}$/.test(payload.id)) {
-    setStatus("Use a site id of lowercase letters, numbers, and hyphens.");
-    return;
-  }
-  if (!payload.name) {
-    setStatus("A site needs a name.");
-    return;
-  }
-  if (!activeSiteId && sites.some((site) => site.id === payload.id)) {
-    setStatus("That site id is already used.");
-    return;
-  }
   const next = activeSiteId
     ? sites.map((site) => (site.id === activeSiteId ? payload : site))
     : [...sites, payload];
   generateQR(payload.id, { scroll: true });
+  setStatus("Saving site…", "info");
+  activeSiteId = payload.id;
+  $("site-selector").value = payload.id;
+  $("siteId").readOnly = true;
   try {
     await saveSites(next);
-    activeSiteId = payload.id;
-    $("site-selector").value = payload.id;
-    $("siteId").readOnly = true;
-    setStatus("Site saved. The QR code above is ready to download.");
+    setStatus("Site saved on the server. The QR code below is ready to download.", "success");
+    $("qr-section").scrollIntoView({ block: "nearest", behavior: "smooth" });
   } catch (error) {
-    sites = next;
-    activeSiteId = payload.id;
-    keepLocalCopy();
-    renderSelector();
-    renderAllQr();
-    renderLibraryFromSites();
-    $("site-selector").value = payload.id;
-    $("siteId").readOnly = true;
-    setStatus(`${error.message} The QR code is ready to download, and this browser can open the site with View live site.`);
+    try {
+      persistSitesLocally(
+        next,
+        `Site saved in this browser. ${error.message} Use View live site on this device to check it. When the server is running, save again to publish for everyone.`,
+      );
+      $("qr-section").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } catch (storageError) {
+      setStatus(storageError.message, "error");
+    }
   }
 });
 

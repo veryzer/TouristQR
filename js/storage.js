@@ -11,7 +11,11 @@ export function readLocal(key) {
 }
 
 export function writeLocal(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    throw new Error("This browser has run out of room for saved photographs. Use fewer or smaller images, or save while the TouristQR server is running.");
+  }
 }
 
 export function clearLocal(key) {
