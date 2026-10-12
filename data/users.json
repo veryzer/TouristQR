@@ -1,0 +1,11 @@
+[
+  {
+    "username": "pastor",
+    "role": "site-admin",
+    "organisationId": null,
+    "algo": "pbkdf2",
+    "iterations": 120000,
+    "salt": "fdabdb8fa8108b54bb1e80b5078c2370",
+    "hash": "34b0190a600e135d408f54229be1b6adedb92bf36432822485c4da5bbc228bffd5068c1d470baebe6f3ca57324ce199daf2813dd81ac595771859b7ee0099e0e"
+  }
+]

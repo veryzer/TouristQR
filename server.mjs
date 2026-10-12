@@ -1,7 +1,24 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  hashPassword,
+  isSiteAdmin,
+  normaliseUsername,
+  publicUser,
+  sponsorOrganisationId,
+  validUsername,
+  verifyUserPassword,
+} from "./js/auth.js";
+import {
+  applyRestore,
+  buildBackup,
+  organisationsForActor,
+  sitesForActor,
+  subscriptionReport,
+} from "./js/backup.js";
 import {
   collectPhotoCodes,
   comparePhotoCodes,
@@ -13,6 +30,9 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const port = Number(process.env.PORT) || 4173;
+const host = process.env.HOST || "0.0.0.0";
+const sessions = new Map();
+const SESSION_HOURS = 12;
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -36,6 +56,21 @@ function readJson(name) {
 
 function writeJson(name, value) {
   fs.writeFileSync(dataFile(name), `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function readSettings() {
+  try {
+    const data = readJson("settings.json");
+    return { sponsorNotice: String(data?.sponsorNotice || "").trim().slice(0, 400) };
+  } catch {
+    return { sponsorNotice: "" };
+  }
+}
+
+function writeSettings(value) {
+  const settings = { sponsorNotice: String(value?.sponsorNotice || "").trim().slice(0, 400) };
+  writeJson("settings.json", settings);
+  return settings;
 }
 
 function logActivity(entry) {
@@ -93,9 +128,12 @@ function normaliseSite(site, organisations) {
       throw error;
     }
     const code = formatPhotoCode(parsed.sponsorNumber, parsed.reference);
+    const url = String(photo.url || "").startsWith("data:")
+      ? photo.url
+      : `images/${code}.jpg`;
     return {
       code,
-      url: `images/${code}.jpg`,
+      url,
       caption: String(photo.caption || "").trim(),
       credit: String(photo.credit || "Demonstration photograph").trim(),
       kind: photo.kind === "historical" ? "historical" : "current",
@@ -125,9 +163,7 @@ function normaliseSite(site, organisations) {
   };
 }
 
-function photoLibrary() {
-  const sites = readJson("sites.json");
-  const organisations = readJson("organisations.json");
+function photoLibrary(sites, organisations) {
   const used = new Map();
   for (const site of sites) {
     const org = findOrganisation(organisations, site.organisationId);
@@ -162,12 +198,13 @@ function photoLibrary() {
   return [...used.values()].sort((a, b) => comparePhotoCodes(a.code, b.code));
 }
 
-function sendJson(res, status, body) {
+function sendJson(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(payload),
     "Cache-Control": "no-store",
+    ...extraHeaders,
   });
   res.end(payload);
 }
@@ -190,6 +227,96 @@ function readBody(req, limit) {
   });
 }
 
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  const out = {};
+  for (const part of header.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (!name) continue;
+    out[name] = decodeURIComponent(rest.join("="));
+  }
+  return out;
+}
+
+function sessionCookie(token, req, maxAgeSeconds) {
+  const secure = req.headers["x-forwarded-proto"] === "https" || Boolean(process.env.COOKIE_SECURE);
+  const parts = [
+    `touristqr_session=${token}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAgeSeconds}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function currentUser(req) {
+  const token = parseCookies(req).touristqr_session;
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session || session.expiresAt < Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  const users = readJson("users.json");
+  return users.find((user) => user.username === session.username) || null;
+}
+
+function requireUser(req, res) {
+  const user = currentUser(req);
+  if (!user) {
+    sendJson(res, 401, { error: "Sign in to continue." });
+    return null;
+  }
+  return user;
+}
+
+function requireAdmin(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return null;
+  if (!isSiteAdmin(user)) {
+    sendJson(res, 403, { error: "Only the site admin can do that." });
+    return null;
+  }
+  return user;
+}
+
+function collectBackupPhotos(sites) {
+  const photos = [];
+  for (const site of sites) {
+    for (const photo of site.photos || []) {
+      if (String(photo.url || "").startsWith("data:")) {
+        photos.push({ code: photo.code, dataUrl: photo.url });
+        continue;
+      }
+      const file = path.join(root, "images", `${photo.code}.jpg`);
+      if (fs.existsSync(file)) {
+        photos.push({ code: photo.code, jpeg: fs.readFileSync(file).toString("base64") });
+      }
+    }
+  }
+  return photos;
+}
+
+function restoreBackupPhotos(photos) {
+  if (!Array.isArray(photos)) return;
+  fs.mkdirSync(path.join(root, "images"), { recursive: true });
+  for (const photo of photos) {
+    if (!parsePhotoCode(photo.code) || !photo.jpeg) continue;
+    fs.writeFileSync(path.join(root, "images", `${photo.code}.jpg`), Buffer.from(photo.jpeg, "base64"));
+  }
+}
+
+function blockedStatic(relative) {
+  const file = relative.replace(/\\/g, "/").toLowerCase();
+  return file === "data/users.json"
+    || file.startsWith(".git/")
+    || file === ".git"
+    || file.startsWith(".vscode/")
+    || file.endsWith("sftp.json");
+}
+
 function safeFile(urlPath) {
   const decoded = decodeURIComponent(urlPath.split("?")[0]);
   const cleaned = decoded.replace(/^\/+/, "");
@@ -197,36 +324,236 @@ function safeFile(urlPath) {
   const full = path.resolve(root, cleaned);
   const relative = path.relative(root, full);
   if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
-  if (relative === ".git" || relative.startsWith(`.git${path.sep}`)) return null;
+  if (blockedStatic(relative)) return null;
   return full;
+}
+
+function writeSites(incoming, organisations) {
+  const sites = incoming.map((site) => normaliseSite(site, organisations));
+  const ids = new Set();
+  const photoCodes = new Set();
+  for (const site of sites) {
+    if (ids.has(site.id)) {
+      throw Object.assign(new Error(`Two sites use the id ${site.id}.`), { status: 400 });
+    }
+    ids.add(site.id);
+    for (const photo of site.photos) {
+      if (photoCodes.has(photo.code)) {
+        throw Object.assign(new Error(`Photograph ${photo.code} is already used.`), { status: 400 });
+      }
+      photoCodes.add(photo.code);
+    }
+  }
+  writeJson("sites.json", sites);
+  return sites;
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
 
+    if (url.pathname === "/api/session" && req.method === "GET") {
+      sendJson(res, 200, { user: publicUser(currentUser(req)) });
+      return;
+    }
+
+    if (url.pathname === "/api/login" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
+      const username = normaliseUsername(body.username);
+      const users = readJson("users.json");
+      const user = users.find((item) => item.username === username);
+      if (!user || !verifyUserPassword(body.password, user)) {
+        sendJson(res, 401, { error: "Username or password is not correct." });
+        return;
+      }
+      const token = crypto.randomBytes(24).toString("hex");
+      sessions.set(token, {
+        username: user.username,
+        expiresAt: Date.now() + SESSION_HOURS * 60 * 60 * 1000,
+      });
+      logActivity({ action: "login", username: user.username });
+      sendJson(res, 200, { user: publicUser(user) }, {
+        "Set-Cookie": sessionCookie(token, req, SESSION_HOURS * 60 * 60),
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/logout" && req.method === "POST") {
+      const token = parseCookies(req).touristqr_session;
+      if (token) sessions.delete(token);
+      sendJson(res, 200, { user: null }, {
+        "Set-Cookie": sessionCookie("", req, 0),
+      });
+      return;
+    }
+
     if (url.pathname === "/api/sites" && req.method === "GET") {
-      sendJson(res, 200, readJson("sites.json"));
+      const user = requireUser(req, res);
+      if (!user) return;
+      sendJson(res, 200, sitesForActor(readJson("sites.json"), user));
       return;
     }
 
     if (url.pathname === "/api/organisations" && req.method === "GET") {
-      sendJson(res, 200, readJson("organisations.json"));
+      const user = requireUser(req, res);
+      if (!user) return;
+      sendJson(res, 200, organisationsForActor(readJson("organisations.json"), user));
       return;
     }
 
     if (url.pathname === "/api/photos" && req.method === "GET") {
-      sendJson(res, 200, photoLibrary());
+      const user = requireUser(req, res);
+      if (!user) return;
+      const sites = sitesForActor(readJson("sites.json"), user);
+      const organisations = organisationsForActor(readJson("organisations.json"), user);
+      sendJson(res, 200, photoLibrary(sites, organisations).filter((photo) => {
+        if (isSiteAdmin(user)) return true;
+        const org = organisations[0];
+        return org && photo.sponsorNumber === org.number;
+      }));
+      return;
+    }
+
+    if (url.pathname === "/api/report" && req.method === "GET") {
+      const user = requireAdmin(req, res);
+      if (!user) return;
+      sendJson(res, 200, subscriptionReport(readJson("organisations.json"), readJson("sites.json")));
+      return;
+    }
+
+    if (url.pathname === "/api/users" && req.method === "POST") {
+      const admin = requireAdmin(req, res);
+      if (!admin) return;
+      const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
+      const username = normaliseUsername(body.username);
+      const password = String(body.password || "");
+      const organisationId = String(body.organisationId || "").trim();
+      if (!validUsername(username)) {
+        sendJson(res, 400, { error: "A username uses 3–40 letters, numbers, dots, hyphens, or underscores." });
+        return;
+      }
+      if (password.length < 8) {
+        sendJson(res, 400, { error: "Give the sponsor a password of at least 8 characters." });
+        return;
+      }
+      const organisations = readJson("organisations.json");
+      if (!findOrganisation(organisations, organisationId)) {
+        sendJson(res, 400, { error: "Choose a sponsor for this login." });
+        return;
+      }
+      const users = readJson("users.json");
+      if (users.some((item) => item.username === username)) {
+        sendJson(res, 400, { error: "That username is already used." });
+        return;
+      }
+      const hashed = hashPassword(password);
+      users.push({
+        username,
+        role: "sponsor",
+        organisationId,
+        ...hashed,
+      });
+      writeJson("users.json", users);
+      logActivity({ action: "create-user", username, organisationId, by: admin.username });
+      sendJson(res, 200, { user: { username, role: "sponsor", organisationId } });
+      return;
+    }
+
+    if (url.pathname === "/api/backup" && req.method === "GET") {
+      const user = requireUser(req, res);
+      if (!user) return;
+      const organisations = readJson("organisations.json");
+      const sites = readJson("sites.json");
+      const scope = url.searchParams.get("scope") || "sponsor";
+      let backup;
+      if (scope === "full") {
+        if (!isSiteAdmin(user)) {
+          sendJson(res, 403, { error: "Only the site admin can download the whole catalogue." });
+          return;
+        }
+        backup = buildBackup({ kind: "full", organisations, sites });
+        backup.users = readJson("users.json");
+        backup.settings = readSettings();
+      } else {
+        const organisationId = isSiteAdmin(user)
+          ? (url.searchParams.get("organisationId") || organisations[0]?.id)
+          : sponsorOrganisationId(user);
+        backup = buildBackup({ kind: "sponsor", organisationId, organisations, sites });
+      }
+      backup.photos = collectBackupPhotos(backup.sites);
+      logActivity({ action: "backup", kind: backup.kind, organisationId: backup.organisationId || null, by: user.username });
+      sendJson(res, 200, backup);
+      return;
+    }
+
+    if (url.pathname === "/api/restore" && req.method === "POST") {
+      const user = requireUser(req, res);
+      if (!user) return;
+      const backup = JSON.parse((await readBody(req, 40_000_000)).toString("utf8"));
+      const next = applyRestore({
+        currentOrganisations: readJson("organisations.json"),
+        currentSites: readJson("sites.json"),
+        backup,
+        user,
+      });
+      const organisations = next.organisations;
+      const sites = writeSites(next.sites, organisations);
+      writeJson("organisations.json", organisations);
+      if (backup.kind === "full" && Array.isArray(backup.users) && isSiteAdmin(user)) {
+        writeJson("users.json", backup.users);
+      }
+      if (backup.kind === "full" && backup.settings && isSiteAdmin(user)) {
+        writeSettings(backup.settings);
+      }
+      restoreBackupPhotos(backup.photos);
+      logActivity({ action: "restore", kind: backup.kind, organisationId: backup.organisationId || null, by: user.username });
+      sendJson(res, 200, {
+        organisations: organisationsForActor(organisations, user),
+        sites: sitesForActor(sites, user),
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/settings" && req.method === "GET") {
+      const user = requireUser(req, res);
+      if (!user) return;
+      sendJson(res, 200, readSettings());
+      return;
+    }
+
+    if (url.pathname === "/api/settings" && req.method === "PUT") {
+      const user = requireAdmin(req, res);
+      if (!user) return;
+      const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
+      const settings = writeSettings(body);
+      logActivity({ action: "save-notice", by: user.username });
+      sendJson(res, 200, settings);
       return;
     }
 
     if (url.pathname === "/api/organisations" && req.method === "PUT") {
+      const user = requireUser(req, res);
+      if (!user) return;
       const incoming = JSON.parse((await readBody(req, 1_000_000)).toString("utf8"));
       if (!Array.isArray(incoming)) {
         sendJson(res, 400, { error: "Expected a list of sponsors." });
         return;
       }
       const current = readJson("organisations.json");
+      if (!isSiteAdmin(user)) {
+        const orgId = sponsorOrganisationId(user);
+        const edited = incoming.find((item) => item.id === orgId) || incoming[0];
+        const email = String(edited?.email || "").trim();
+        if (!email) {
+          sendJson(res, 400, { error: "Enter a public enquiry email address." });
+          return;
+        }
+        const next = current.map((org) => (org.id === orgId ? { ...org, email } : org));
+        writeJson("organisations.json", next);
+        logActivity({ action: "save-organisations", by: user.username });
+        sendJson(res, 200, organisationsForActor(next, user));
+        return;
+      }
       const next = current.map((org) => {
         const edited = incoming.find((item) => item.id === org.id);
         if (!edited) return org;
@@ -260,46 +587,53 @@ const server = http.createServer(async (req, res) => {
         });
       }
       writeJson("organisations.json", next);
-      logActivity({ action: "save-organisations" });
+      logActivity({ action: "save-organisations", by: user.username });
       sendJson(res, 200, next);
       return;
     }
 
     if (url.pathname === "/api/sites" && req.method === "PUT") {
+      const user = requireUser(req, res);
+      if (!user) return;
       const incoming = JSON.parse((await readBody(req, 8_000_000)).toString("utf8"));
       if (!Array.isArray(incoming)) {
         sendJson(res, 400, { error: "Expected a list of sites." });
         return;
       }
       const organisations = readJson("organisations.json");
-      const sites = incoming.map((site) => normaliseSite(site, organisations));
-      const ids = new Set();
-      const photoCodes = new Set();
-      for (const site of sites) {
-        if (ids.has(site.id)) {
-          sendJson(res, 400, { error: `Two sites use the id ${site.id}.` });
+      const current = readJson("sites.json");
+      let nextList;
+      if (isSiteAdmin(user)) {
+        nextList = incoming;
+      } else {
+        const orgId = sponsorOrganisationId(user);
+        if (incoming.some((site) => site.organisationId !== orgId)) {
+          sendJson(res, 403, { error: "You can only save your own sites." });
           return;
         }
-        ids.add(site.id);
-        for (const photo of site.photos) {
-          if (photoCodes.has(photo.code)) {
-            sendJson(res, 400, { error: `Photograph ${photo.code} is already used.` });
-            return;
-          }
-          photoCodes.add(photo.code);
-        }
+        nextList = [
+          ...current.filter((site) => site.organisationId !== orgId),
+          ...incoming,
+        ];
       }
-      writeJson("sites.json", sites);
-      logActivity({ action: "save-sites", count: sites.length });
-      sendJson(res, 200, sites);
+      const sites = writeSites(nextList, organisations);
+      logActivity({ action: "save-sites", count: incoming.length, by: user.username });
+      sendJson(res, 200, sitesForActor(sites, user));
       return;
     }
 
     if (url.pathname === "/api/media" && req.method === "POST") {
-      const sponsor = Number(url.searchParams.get("sponsor"));
+      const user = requireUser(req, res);
+      if (!user) return;
       const organisations = readJson("organisations.json");
-      if (!organisations.some((org) => org.number === sponsor)) {
+      const sponsor = Number(url.searchParams.get("sponsor"));
+      const org = organisations.find((item) => item.number === sponsor);
+      if (!org) {
         sendJson(res, 400, { error: "Unknown sponsor number." });
+        return;
+      }
+      if (!isSiteAdmin(user) && org.id !== sponsorOrganisationId(user)) {
+        sendJson(res, 403, { error: "You can only add photographs for your own sites." });
         return;
       }
       const sites = readJson("sites.json");
@@ -315,7 +649,7 @@ const server = http.createServer(async (req, res) => {
       }
       fs.mkdirSync(path.join(root, "images"), { recursive: true });
       fs.writeFileSync(path.join(root, "images", `${code}.jpg`), buffer);
-      logActivity({ action: "save-photo", code, sponsor });
+      logActivity({ action: "save-photo", code, sponsor, by: user.username });
       sendJson(res, 200, { code, url: `images/${code}.jpg` });
       return;
     }
@@ -352,7 +686,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`TouristQR is running at http://127.0.0.1:${port}/`);
-  console.log(`Admin console       http://127.0.0.1:${port}/admin.html`);
+server.listen(port, host, () => {
+  console.log(`TouristQR is running at http://${host}:${port}/`);
+  console.log(`Admin console       http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/admin.html`);
 });

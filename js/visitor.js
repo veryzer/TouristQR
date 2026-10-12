@@ -37,6 +37,166 @@ const state = {
 };
 
 let html5QrCode = null;
+let historyUtterance = null;
+let historyPaused = false;
+let historyKeepAlive = 0;
+let speechVoices = [];
+
+function speechSupported() {
+  return typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+}
+
+function loadSpeechVoices() {
+  if (!speechSupported()) return;
+  speechVoices = window.speechSynthesis.getVoices() || [];
+}
+
+function preferredVoice() {
+  loadSpeechVoices();
+  const voices = speechVoices;
+  const pick = (test) => voices.find(test);
+  return pick((voice) => /en-AU/i.test(voice.lang) && voice.localService)
+    || pick((voice) => /en-AU/i.test(voice.lang))
+    || pick((voice) => /^en(-|$)/i.test(voice.lang) && voice.localService)
+    || pick((voice) => /^en/i.test(voice.lang))
+    || voices[0]
+    || null;
+}
+
+function setSpeakButton(mode) {
+  const button = $("history-speak");
+  if (!button) return;
+  if (mode === "speaking") {
+    button.textContent = "⏸";
+    button.setAttribute("aria-label", "Pause reading");
+    button.title = "Pause reading";
+  } else if (mode === "paused") {
+    button.textContent = "▶";
+    button.setAttribute("aria-label", "Continue reading");
+    button.title = "Continue reading";
+  } else {
+    button.textContent = "🔊";
+    button.setAttribute("aria-label", "Read site history");
+    button.title = "Read site history";
+  }
+}
+
+function clearSpeechKeepAlive() {
+  if (historyKeepAlive) {
+    clearInterval(historyKeepAlive);
+    historyKeepAlive = 0;
+  }
+}
+
+function kickSpeech() {
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth.speaking || synth.paused) return;
+    synth.pause();
+    synth.resume();
+  } catch {
+    // iPhone Safari needs this nudge; ignore if the engine rejects it.
+  }
+}
+
+function startSpeechKeepAlive() {
+  clearSpeechKeepAlive();
+  historyKeepAlive = window.setInterval(kickSpeech, 8000);
+}
+
+function stopHistorySpeech() {
+  if (!speechSupported()) return;
+  clearSpeechKeepAlive();
+  historyPaused = false;
+  historyUtterance = null;
+  try {
+    window.speechSynthesis.cancel();
+  } catch {
+    // Ignore engines that throw on cancel.
+  }
+  setSpeakButton("idle");
+}
+
+function speakHistory(text) {
+  const synth = window.speechSynthesis;
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voice = preferredVoice();
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+  } else {
+    utterance.lang = "en-US";
+  }
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  utterance.onend = () => {
+    if (historyUtterance !== utterance) return;
+    clearSpeechKeepAlive();
+    historyUtterance = null;
+    historyPaused = false;
+    setSpeakButton("idle");
+  };
+  utterance.onerror = () => {
+    if (historyUtterance !== utterance) return;
+    clearSpeechKeepAlive();
+    historyUtterance = null;
+    historyPaused = false;
+    setSpeakButton("idle");
+  };
+  historyUtterance = utterance;
+  historyPaused = false;
+  setSpeakButton("speaking");
+  synth.speak(utterance);
+  startSpeechKeepAlive();
+}
+
+function toggleHistorySpeech() {
+  if (!speechSupported()) {
+    setNote("This phone cannot read the history aloud.");
+    return;
+  }
+  const text = ($("site-description")?.textContent || "").trim();
+  if (!text) return;
+  const synth = window.speechSynthesis;
+  loadSpeechVoices();
+  if (historyUtterance && !historyPaused) {
+    clearSpeechKeepAlive();
+    try {
+      synth.pause();
+    } catch {
+      // iPhone often has no pause; the next tap can start again.
+    }
+    historyPaused = true;
+    setSpeakButton("paused");
+    return;
+  }
+  if (historyUtterance && historyPaused) {
+    try {
+      synth.resume();
+    } catch {
+      speakHistory(text);
+      return;
+    }
+    historyPaused = false;
+    setSpeakButton("speaking");
+    startSpeechKeepAlive();
+    return;
+  }
+  speakHistory(text);
+}
+
+function setContact(org, site) {
+  const link = $("contact-sponsor");
+  if (!link) return;
+  if (!org?.email || !site?.name) {
+    link.classList.add("hidden");
+    link.removeAttribute("href");
+    return;
+  }
+  link.classList.remove("hidden");
+  link.href = `mailto:${org.email}?subject=${encodeURIComponent(`Just visited your site ${site.name}`)}`;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -120,11 +280,13 @@ function setSponsor(org, site) {
   if (!org || !site) {
     badge.textContent = "TouristQR";
     badge.removeAttribute("href");
+    setContact(null, null);
     return;
   }
   badge.textContent = `Sponsored by ${org.name}`;
   const body = `Comment about ${site.name}.\n${sitePublicUrl(site.id)}\n`;
   badge.href = `mailto:${org.email}?subject=${encodeURIComponent("TouristQR.com")}&body=${encodeURIComponent(body)}`;
+  setContact(org, site);
 }
 
 function showPhoto(index) {
@@ -170,6 +332,8 @@ function renderFull(site) {
   state.gallery = photosInCodeOrder(site.photos);
   state.photoIndex = 0;
   $("site-description").textContent = site.description || "";
+  const speak = $("history-speak");
+  if (speak) speak.classList.toggle("hidden", !speechSupported() || !(site.description || "").trim());
   $("maps-link").href = `https://maps.google.com/?q=${encodeURIComponent(site.mapsQuery || site.name)}`;
   const saved = readJson(FAVOURITES, []).includes(site.id);
   setStackButton($("save-btn"), saved ? "✅" : "⭐", saved ? "Saved" : "Save");
@@ -188,6 +352,7 @@ function renderFull(site) {
 }
 
 function openSite(site) {
+  stopHistorySpeech();
   state.current = site;
   const org = findOrganisation(state.organisations, site.organisationId);
   const listed = isListed(site, org);
@@ -210,6 +375,7 @@ function openSite(site) {
 
 function showCurrent() {
   if (!state.results.length) {
+    stopHistorySpeech();
     state.current = null;
     document.title = "TouristQR";
     const message = emptyMessage();
@@ -384,6 +550,9 @@ async function init() {
   }
 }
 
+$("history-speak").addEventListener("click", toggleHistorySpeech);
+window.addEventListener("pagehide", stopHistorySpeech);
+
 $("prev-site").addEventListener("click", () => navigate(-1));
 $("next-site").addEventListener("click", () => navigate(1));
 $("photo-prev").addEventListener("click", () => showPhoto(state.photoIndex - 1));
@@ -447,4 +616,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 bindPhotoSwipe();
+if (speechSupported()) {
+  loadSpeechVoices();
+  window.speechSynthesis.addEventListener("voiceschanged", loadSpeechVoices);
+}
 init();

@@ -1,0 +1,6 @@
+<Files "users.json">
+Require all denied
+</Files>
+<Files "settings.json">
+Require all denied
+</Files>

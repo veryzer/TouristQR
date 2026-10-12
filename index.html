@@ -49,7 +49,10 @@
             </div>
 
             <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
+                <div class="flex items-center justify-between gap-2">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
+                    <button type="button" id="history-speak" class="shrink-0 w-9 h-9 rounded-full border border-slate-200 bg-white text-base leading-none hover:bg-slate-50" aria-label="Read site history" title="Read site history">🔊</button>
+                </div>
                 <p id="site-description" class="text-sm text-slate-600 leading-relaxed"></p>
             </section>
 
@@ -111,8 +114,9 @@
                 <button type="button" id="visited-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Visited</button>
                 <button type="button" id="tour-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Tour</button>
             </div>
-            <div class="flex justify-between gap-3 text-xs">
+            <div class="flex justify-between gap-2 text-xs">
                 <button type="button" id="email-saved" class="text-blue-700 underline">Email saved list</button>
+                <a id="contact-sponsor" class="hidden text-blue-700 underline" href="#">contact sponsor</a>
                 <button type="button" id="email-tour" class="text-blue-700 underline">Email tour</button>
             </div>
             <p id="footer-note" class="text-xs text-slate-500 min-h-4" aria-live="polite"></p>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appPath } from "../js/config.js";
+import { appPath, sitePublicUrl } from "../js/config.js";
 import {
   formatPhotoCode,
   mergeById,
@@ -28,12 +28,16 @@ test("a new subscription is active", () => {
   assert.equal(subscriptionState("2026-06-01", october), "active");
 });
 
-test("admin addresses stay inside the GitHub project", () => {
-  assert.equal(appPath("/TouristQR/admin"), "/TouristQR/");
-  assert.equal(appPath("/TouristQR/admin/"), "/TouristQR/");
-  assert.equal(appPath("/TouristQR/admin.html"), "/TouristQR/");
-  assert.equal(appPath("/TouristQR/index.html"), "/TouristQR/");
+test("admin addresses stay at the site root", () => {
+  assert.equal(appPath("/admin"), "/");
+  assert.equal(appPath("/admin/"), "/");
+  assert.equal(appPath("/admin.html"), "/");
+  assert.equal(appPath("/index.html"), "/");
   assert.equal(appPath("/"), "/");
+});
+
+test("printed QR codes open touristqr.com", () => {
+  assert.equal(sitePublicUrl("moorabool-wool-exchange"), "https://touristqr.com/?site=moorabool-wool-exchange");
 });
 
 test("local records merge onto the published catalogue", () => {
