@@ -1,13 +1,17 @@
-import { assetUrl, sitePublicUrl } from "./config.js";
+import { assetUrl, sitePublicUrl } from "./config.js?v=ios5";
 import {
+  DEFAULT_HERITAGE_CATEGORIES,
+  DEFAULT_SHOP_CATEGORIES,
   displayYear,
   findOrganisation,
   isListed,
+  listingGroup,
   mergeById,
+  organisationKind,
   photosInCodeOrder,
   searchSites,
-} from "./model.js";
-import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js";
+} from "./model.js?v=ios5";
+import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js?v=ios5";
 
 const FAVOURITES = "touristqr_favourites";
 const VISITS = "touristqr_visits";
@@ -34,6 +38,8 @@ const state = {
   gallery: [],
   photoIndex: 0,
   pointer: null,
+  group: "sites",
+  categories: { heritage: DEFAULT_HERITAGE_CATEGORIES, shop: DEFAULT_SHOP_CATEGORIES },
 };
 
 let html5QrCode = null;
@@ -41,9 +47,42 @@ let historyUtterance = null;
 let historyPaused = false;
 let historyKeepAlive = 0;
 let speechVoices = [];
+let historyAudio = null;
+let historyChunks = [];
+let historyChunkIndex = 0;
+let historyAudioPaused = false;
+let audioTtsFallback = false;
+
+function isApplePhone() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isDesktopBrowser() {
+  if (isApplePhone()) return false;
+  return !/Android|Mobi|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
+}
+
+function isIOSSafari() {
+  const ua = navigator.userAgent || "";
+  return isApplePhone() && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
+}
 
 function speechSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+}
+
+function useDeviceVoice() {
+  return speechSupported() && (!isApplePhone() || isIOSSafari());
+}
+
+function isSafariBrowser() {
+  const ua = navigator.userAgent || "";
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|FxiOS|EdgiOS|Edg\/|OPR\/|OPiOS|DuckDuckGo|Android/i.test(ua);
+}
+
+function speakerVisible() {
+  return isSafariBrowser() && speechSupported();
 }
 
 function loadSpeechVoices() {
@@ -104,15 +143,35 @@ function startSpeechKeepAlive() {
   historyKeepAlive = window.setInterval(kickSpeech, 8000);
 }
 
+function stopHistoryAudio() {
+  historyChunks = [];
+  historyChunkIndex = 0;
+  historyAudioPaused = false;
+  audioTtsFallback = false;
+  if (!historyAudio) return;
+  try {
+    historyAudio.onended = null;
+    historyAudio.onerror = null;
+    historyAudio.pause();
+    historyAudio.removeAttribute("src");
+    historyAudio.load();
+  } catch {
+    // Ignore audio engines that throw while stopping.
+  }
+  historyAudio = null;
+}
+
 function stopHistorySpeech() {
-  if (!speechSupported()) return;
   clearSpeechKeepAlive();
   historyPaused = false;
   historyUtterance = null;
-  try {
-    window.speechSynthesis.cancel();
-  } catch {
-    // Ignore engines that throw on cancel.
+  stopHistoryAudio();
+  if (speechSupported()) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Ignore engines that throw on cancel.
+    }
   }
   setSpeakButton("idle");
 }
@@ -151,13 +210,109 @@ function speakHistory(text) {
   startSpeechKeepAlive();
 }
 
-function toggleHistorySpeech() {
-  if (!speechSupported()) {
-    setNote("This phone cannot read the history aloud.");
+function splitSpeechChunks(text, maxLen = 160) {
+  const words = String(text || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const chunks = [];
+  let buf = "";
+  for (const word of words) {
+    const next = buf ? `${buf} ${word}` : word;
+    if (next.length <= maxLen) {
+      buf = next;
+      continue;
+    }
+    if (buf) chunks.push(buf);
+    if (word.length <= maxLen) {
+      buf = word;
+      continue;
+    }
+    for (let i = 0; i < word.length; i += maxLen) chunks.push(word.slice(i, i + maxLen));
+    buf = "";
+  }
+  if (buf) chunks.push(buf);
+  return chunks;
+}
+
+function streamElementsUrl(text) {
+  return `https://api.streamelements.com/kappa/v2/speech?voice=Nicole&text=${encodeURIComponent(text)}`;
+}
+
+function googleTtsUrl(text) {
+  return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-AU&q=${encodeURIComponent(text)}`;
+}
+
+function ttsAudioUrl(text) {
+  return audioTtsFallback ? googleTtsUrl(text) : streamElementsUrl(text);
+}
+
+function playHistoryChunk() {
+  const text = historyChunks[historyChunkIndex];
+  if (!text) {
+    stopHistorySpeech();
     return;
   }
+  const audio = historyAudio || new Audio();
+  historyAudio = audio;
+  audio.setAttribute("playsinline", "true");
+  audio.preload = "auto";
+  audio.onended = () => {
+    if (historyAudioPaused) return;
+    historyChunkIndex += 1;
+    playHistoryChunk();
+  };
+  audio.onerror = () => {
+    if (!audioTtsFallback) {
+      audioTtsFallback = true;
+      playHistoryChunk();
+      return;
+    }
+    stopHistorySpeech();
+    setNote("Chrome on iPhone cannot use the phone’s speaking voice. Open this page in Safari to hear the history.");
+  };
+  audio.src = ttsAudioUrl(text);
+  const start = audio.play();
+  if (start && typeof start.catch === "function") {
+    start.catch(() => {
+      stopHistorySpeech();
+      setNote("Chrome on iPhone cannot use the phone’s speaking voice. Open this page in Safari to hear the history.");
+    });
+  }
+}
+
+function speakHistoryAudio(text) {
+  stopHistoryAudio();
+  historyChunks = splitSpeechChunks(text);
+  historyChunkIndex = 0;
+  historyAudioPaused = false;
+  if (!historyChunks.length) return;
+  setSpeakButton("speaking");
+  playHistoryChunk();
+}
+
+function toggleHistorySpeech() {
   const text = ($("site-description")?.textContent || "").trim();
   if (!text) return;
+  if (historyAudio && !historyAudioPaused) {
+    try {
+      historyAudio.pause();
+    } catch {
+      stopHistorySpeech();
+      return;
+    }
+    historyAudioPaused = true;
+    setSpeakButton("paused");
+    return;
+  }
+  if (historyAudio && historyAudioPaused) {
+    historyAudioPaused = false;
+    setSpeakButton("speaking");
+    const start = historyAudio.play();
+    if (start && typeof start.catch === "function") start.catch(() => speakHistoryAudio(text));
+    return;
+  }
+  if (!useDeviceVoice()) {
+    speakHistoryAudio(text);
+    return;
+  }
   const synth = window.speechSynthesis;
   loadSpeechVoices();
   if (historyUtterance && !historyPaused) {
@@ -165,7 +320,7 @@ function toggleHistorySpeech() {
     try {
       synth.pause();
     } catch {
-      // iPhone often has no pause; the next tap can start again.
+      // iPhone Safari often has no pause; the next tap can start again.
     }
     historyPaused = true;
     setSpeakButton("paused");
@@ -198,6 +353,80 @@ function setContact(org, site) {
   link.href = `mailto:${org.email}?subject=${encodeURIComponent(`Just visited your site ${site.name}`)}`;
 }
 
+function isShopListing(site = state.current) {
+  const org = findOrganisation(state.organisations, site?.organisationId);
+  return organisationKind(org) === "shop";
+}
+
+function applyGroupButtons() {
+  const selected = (id, on) => {
+    const button = $(id);
+    if (!button) return;
+    button.setAttribute("aria-selected", on ? "true" : "false");
+  };
+  selected("filter-sites", state.group === "sites");
+  selected("filter-shops", state.group === "shops");
+  selected("filter-restaurants", state.group === "restaurants");
+  const decade = $("topic-field")?.querySelector('option[value="decade"]');
+  if (decade) decade.hidden = state.group !== "sites";
+  if (state.group !== "sites" && $("topic-field")?.value === "decade") $("topic-field").value = "text";
+  fillTopicCategory();
+  toggleTopicControls();
+}
+
+function fillTopicCategory() {
+  const select = $("topic-category");
+  if (!select) return;
+  const names = state.group === "sites" ? state.categories.heritage : state.categories.shop;
+  const current = select.value;
+  select.replaceChildren();
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = "Any category";
+  select.append(any);
+  names.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.append(option);
+  });
+  select.value = names.includes(current) ? current : "";
+}
+
+function toggleTopicControls() {
+  const category = $("topic-field")?.value === "category";
+  $("topic-input")?.classList.toggle("hidden", category);
+  $("topic-category")?.classList.toggle("hidden", !category);
+}
+
+function topicQueryValue() {
+  if ($("topic-field").value === "category") return $("topic-category").value;
+  return $("topic-input").value;
+}
+
+function runGroupSearch() {
+  state.results = searchSites(state.sites, state.organisations, {
+    group: state.group,
+    placeField: $("place-field")?.value || "city",
+    placeQuery: $("place-input")?.value || "",
+    topicField: $("topic-field")?.value || "text",
+    topicQuery: topicQueryValue(),
+  });
+  state.index = 0;
+  state.browsing = "results";
+}
+
+function setGroup(group, { random = false } = {}) {
+  state.group = group === "shops" || group === "restaurants" ? group : "sites";
+  applyGroupButtons();
+  runGroupSearch();
+  if (random && state.results.length) {
+    state.index = Math.floor(Math.random() * state.results.length);
+  }
+  setNote("");
+  showCurrent();
+}
+
 const $ = (id) => document.getElementById(id);
 
 function readJson(key, fallback) {
@@ -210,7 +439,11 @@ function readJson(key, fallback) {
 }
 
 function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Safari private mode and a full quota must not blank the listing.
+  }
 }
 
 function setNote(message) {
@@ -273,6 +506,8 @@ function showModes(mode) {
   $("save-btn").classList.toggle("opacity-40", !rich);
   $("prev-site").disabled = state.results.length === 0;
   $("next-site").disabled = state.results.length === 0;
+  $("export-page").disabled = !state.current;
+  $("export-page").classList.toggle("opacity-40", !state.current);
 }
 
 function setSponsor(org, site) {
@@ -298,8 +533,8 @@ function showPhoto(index) {
   image.src = photo.url;
   image.alt = photo.caption || state.current?.name || "Site photograph";
   image.classList.toggle("is-historical", photo.kind === "historical");
-  $("photo-code").textContent = photo.code;
-  $("photo-status").textContent = `Photograph ${photo.code}, ${state.photoIndex + 1} of ${count}`;
+  $("photo-status").textContent = `Photograph ${state.photoIndex + 1} of ${count}`;
+  if ($("photo-caption")) $("photo-caption").textContent = photo.caption || "";
   $("photo-prev").classList.toggle("hidden", count < 2);
   $("photo-next").classList.toggle("hidden", count < 2);
 
@@ -317,7 +552,7 @@ function showPhoto(index) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `shrink-0 w-[31%] overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] border-2 ${thumbIndex === state.photoIndex ? "border-blue-600" : "border-transparent"}`;
-    button.setAttribute("aria-label", `Show photograph ${item.code}`);
+    button.setAttribute("aria-label", `Show photograph ${thumbIndex + 1}`);
     const thumb = document.createElement("img");
     thumb.src = item.url;
     thumb.alt = "";
@@ -328,12 +563,77 @@ function showPhoto(index) {
   });
 }
 
+function publicHttpUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const withProtocol = /^https?:\/\//i.test(raw)
+    ? raw
+    : (/^(www\.|[a-z0-9-]+(\.[a-z0-9-]+)+)/i.test(raw) ? `https://${raw}` : "");
+  if (!withProtocol) return "";
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.href;
+  } catch {
+    return "";
+  }
+}
+
+function linkifyDescription(el, text) {
+  if (!el) return;
+  el.replaceChildren();
+  const source = String(text || "");
+  if (!source) return;
+  const pattern = /\b(?:https?:\/\/|www\.)[^\s<>"'\\]+/gi;
+  let last = 0;
+  let match;
+  while ((match = pattern.exec(source))) {
+    if (match.index > last) el.append(document.createTextNode(source.slice(last, match.index)));
+    const full = match[0];
+    const core = full.replace(/[.,;:!?]+$/g, "");
+    const punct = full.slice(core.length);
+    const href = publicHttpUrl(core);
+    if (href) {
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.className = "text-blue-700 underline break-all";
+      link.textContent = core;
+      el.append(link);
+    } else {
+      el.append(document.createTextNode(core));
+    }
+    if (punct) el.append(document.createTextNode(punct));
+    last = match.index + full.length;
+  }
+  if (last < source.length) el.append(document.createTextNode(source.slice(last)));
+}
+
 function renderFull(site) {
   state.gallery = photosInCodeOrder(site.photos);
   state.photoIndex = 0;
-  $("site-description").textContent = site.description || "";
+  linkifyDescription($("site-description"), site.description || "");
+  const shop = isShopListing(site);
+  if ($("history-heading")) $("history-heading").textContent = shop ? "Description" : "Site History";
+  const webWrap = $("shop-website-wrap");
+  const webLink = $("shop-website");
+  if (webWrap && webLink) {
+    const raw = String(site.furtherReading || "").trim();
+    const href = shop ? publicHttpUrl(raw) : "";
+    webWrap.classList.toggle("hidden", !href);
+    if (href) {
+      webLink.href = href;
+      webLink.textContent = raw.replace(/^https?:\/\//i, "");
+    } else {
+      webLink.removeAttribute("href");
+      webLink.textContent = "";
+    }
+  }
+  if ($("oldest-heading")) $("oldest-heading").textContent = shop ? "Shop front" : "Oldest Known Photo";
+  if ($("year-label")) $("year-label").textContent = shop ? "Established" : "Established / Built";
   const speak = $("history-speak");
-  if (speak) speak.classList.toggle("hidden", !speechSupported() || !(site.description || "").trim());
+  if (speak) speak.classList.toggle("hidden", !speakerVisible() || !(site.description || "").trim());
   $("maps-link").href = `https://maps.google.com/?q=${encodeURIComponent(site.mapsQuery || site.name)}`;
   const saved = readJson(FAVOURITES, []).includes(site.id);
   setStackButton($("save-btn"), saved ? "✅" : "⭐", saved ? "Saved" : "Save");
@@ -344,23 +644,28 @@ function renderFull(site) {
   $("oldest-section").classList.toggle("hidden", !historical);
   if (historical) {
     $("oldest-img").src = historical.url;
-    $("oldest-img").alt = historical.caption || "Oldest known photograph";
-    $("oldest-code").textContent = historical.code;
-    $("oldest-caption").textContent = historical.caption ? ` ${historical.caption}` : "";
+    $("oldest-img").alt = historical.caption || (shop ? "Shop front" : "Oldest known photograph");
+    $("oldest-caption").textContent = historical.caption || "";
   }
   if (state.gallery.length) showPhoto(0);
 }
 
 function openSite(site) {
   stopHistorySpeech();
+  closeExportSheet();
   state.current = site;
   const org = findOrganisation(state.organisations, site.organisationId);
   const listed = isListed(site, org);
-  const address = new URL(window.location.href);
-  address.searchParams.set("site", site.id);
-  history.replaceState(null, "", `${address.pathname}${address.search}`);
+  try {
+    const address = new URL(window.location.href);
+    address.searchParams.set("site", site.id);
+    history.replaceState(null, "", `${address.pathname}${address.search}`);
+  } catch {
+    // Some iPhone browsers reject replaceState; the listing must still render.
+  }
   document.title = `${site.name} · TouristQR`;
   $("place-name").textContent = site.name;
+  if ($("year-label")) $("year-label").textContent = organisationKind(org) === "shop" ? "Established" : "Established / Built";
   $("build-year").textContent = displayYear(site);
   $("result-label").textContent = resultLabel(site);
   setSponsor(org, site);
@@ -376,6 +681,7 @@ function openSite(site) {
 function showCurrent() {
   if (!state.results.length) {
     stopHistorySpeech();
+    closeExportSheet();
     state.current = null;
     document.title = "TouristQR";
     const message = emptyMessage();
@@ -384,7 +690,7 @@ function showCurrent() {
     $("result-label").textContent = "";
     $("view-empty").querySelector("p").textContent = message.body;
     setSponsor(null, null);
-    setNote(message.body);
+    setNote("");
     showModes("empty");
     $("place-name").scrollIntoView({ block: "start" });
     return;
@@ -415,6 +721,18 @@ function emptyMessage() {
     return {
       title: "No visits yet",
       body: "Places you open on this phone will be listed here.",
+    };
+  }
+  if (state.group === "shops") {
+    return {
+      title: "No shops match",
+      body: "Nothing public matches that shop search. Try a suburb, a city, or part of a shop name.",
+    };
+  }
+  if (state.group === "restaurants") {
+    return {
+      title: "No restaurants match",
+      body: "Nothing public matches that restaurant search. Try a suburb, a city, or part of a restaurant name.",
     };
   }
   return {
@@ -462,8 +780,35 @@ function openZoom(src, alt) {
   setModal("image-modal", true);
 }
 
-function startScanner() {
-  if (typeof Html5Qrcode === "undefined") {
+function loadQrLibrary() {
+  if (typeof Html5Qrcode === "function") return Promise.resolve();
+  const src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+  const existing = document.querySelector(`script[data-touristqr-qr="1"]`);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("script")), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.touristqrQr = "1";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("script"));
+    document.head.appendChild(script);
+  });
+}
+
+async function startScanner() {
+  try {
+    await loadQrLibrary();
+  } catch {
+    setNote("The scanner could not be loaded.");
+    return;
+  }
+  if (typeof Html5Qrcode !== "function") {
     setNote("The scanner could not be loaded.");
     return;
   }
@@ -493,6 +838,7 @@ function stopScanner() {
 
 function bindPhotoSwipe() {
   const frame = $("photo-frame");
+  if (!frame) return;
   frame.addEventListener("pointerdown", (event) => {
     if (event.target.closest("button")) return;
     state.pointer = { x: event.clientX, y: event.clientY };
@@ -518,61 +864,180 @@ function bindPhotoSwipe() {
 
 async function init() {
   try {
-    const [siteResponse, orgResponse] = await Promise.all([
-      fetch(assetUrl("data/sites.json")),
-      fetch(assetUrl("data/organisations.json")),
+    const [siteResponse, orgResponse, categoryResponse] = await Promise.all([
+      fetch(assetUrl("data/sites.json") + "?v=ios5"),
+      fetch(assetUrl("data/organisations.json") + "?v=ios5"),
+      fetch(assetUrl("data/categories.json") + "?v=ios5").catch(() => null),
     ]);
     if (!siteResponse.ok || !orgResponse.ok) throw new Error("missing");
     state.sites = mergeById(await siteResponse.json(), readLocal(LOCAL_SITES));
     state.organisations = mergeById(await orgResponse.json(), readLocal(LOCAL_ORGS));
+    if (categoryResponse?.ok) {
+      const lists = await categoryResponse.json();
+      state.categories = {
+        heritage: Array.isArray(lists.heritage) ? lists.heritage : [],
+        shop: Array.isArray(lists.shop) ? lists.shop : [],
+      };
+    }
   } catch {
     $("place-name").textContent = "Sites unavailable";
     $("result-label").textContent = "Start the app with node server.mjs so the shared catalogue can load.";
     return;
   }
 
-  state.results = searchSites(state.sites, state.organisations, { field: "text", query: "" });
-  const requested = new URLSearchParams(window.location.search).get("site");
-  if (requested) {
-    const site = state.sites.find((item) => item.id === requested);
-    if (!site) {
-      $("place-name").textContent = "Site not found";
-      $("result-label").textContent = "";
-      showModes("missing");
-      setSponsor(null, null);
-    } else {
+  try {
+    const requested = new URLSearchParams(window.location.search).get("site");
+    if (requested) {
+      const site = state.sites.find((item) => item.id === requested);
+      if (!site) {
+        $("place-name").textContent = "Site not found";
+        $("result-label").textContent = "";
+        showModes("missing");
+        setSponsor(null, null);
+        applyGroupButtons();
+        return;
+      }
+      const org = findOrganisation(state.organisations, site.organisationId);
+      state.group = listingGroup(site, org);
+      applyGroupButtons();
+      runGroupSearch();
       const pos = state.results.findIndex((item) => item.id === site.id);
       if (pos >= 0) state.index = pos;
       openSite(site);
+      return;
     }
-  } else {
-    showCurrent();
+    setGroup("sites", { random: true });
+  } catch {
+    $("place-name").textContent = "Sites unavailable";
+    $("result-label").textContent = "The listing could not be shown. Close the tab and open touristqr.com again.";
   }
 }
 
-$("history-speak").addEventListener("click", toggleHistorySpeech);
+function copyTextNow(text) {
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.left = "-9999px";
+  document.body.appendChild(field);
+  field.focus();
+  field.select();
+  field.setSelectionRange(0, text.length);
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(field);
+  if (ok) return true;
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return true;
+  }
+  return false;
+}
+
+function fillExportSheet(title, url) {
+  $("export-place").textContent = title;
+  $("export-url").value = url;
+  $("export-messages").href = `sms:&body=${encodeURIComponent(`${title}\n${url}`)}`;
+  $("export-mail").href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(url)}`;
+  const desktop = isDesktopBrowser();
+  $("export-share").classList.toggle("hidden", desktop);
+  $("export-messages").classList.toggle("hidden", desktop);
+}
+
+function openExportSheet() {
+  setModal("export-modal", true);
+}
+
+function closeExportSheet() {
+  setModal("export-modal", false);
+}
+
+function copyExportUrl() {
+  const url = $("export-url").value;
+  if (copyTextNow(url)) setNote("Page address copied. Paste it to send this listing.");
+  else setNote("Select the address, copy it, then paste it to send this listing.");
+}
+
+function nativeSharePayload(title, url) {
+  if (isApplePhone()) return { url };
+  const site = state.current;
+  const year = site ? displayYear(site) : "";
+  return { title, text: `${title}${year ? ` · ${year}` : ""}`, url };
+}
+
+function shareListing(title, url) {
+  if (typeof navigator.share !== "function") {
+    copyExportUrl();
+    return;
+  }
+  navigator.share(nativeSharePayload(title, url)).catch((error) => {
+    if (error?.name === "AbortError") return;
+    openExportSheet();
+  });
+}
+
+function exportPage() {
+  const site = state.current;
+  if (!site) {
+    setNote("Open a site first, then export it.");
+    return;
+  }
+  const url = sitePublicUrl(site.id);
+  const title = site.name;
+  fillExportSheet(title, url);
+  if (isDesktopBrowser() || isApplePhone() || typeof navigator.share !== "function") {
+    openExportSheet();
+    return;
+  }
+  shareListing(title, url);
+}
+
+function on(id, event, handler) {
+  $(id)?.addEventListener(event, handler);
+}
+
+function setSearchPlaceholder(selectId, inputId) {
+  const input = $(inputId);
+  const select = $(selectId);
+  if (input && select) input.placeholder = placeholders[select.value] || "";
+}
+
+on("history-speak", "click", toggleHistorySpeech);
 window.addEventListener("pagehide", stopHistorySpeech);
 
-$("prev-site").addEventListener("click", () => navigate(-1));
-$("next-site").addEventListener("click", () => navigate(1));
-$("photo-prev").addEventListener("click", () => showPhoto(state.photoIndex - 1));
-$("photo-next").addEventListener("click", () => showPhoto(state.photoIndex + 1));
-$("oldest-open").addEventListener("click", () => openZoom($("oldest-img").src, $("oldest-img").alt));
-$("scan-btn").addEventListener("click", startScanner);
-$("scanner-close").addEventListener("click", stopScanner);
-$("about-open").addEventListener("click", () => setModal("about-modal", true));
-$("about-close").addEventListener("click", () => setModal("about-modal", false));
-$("about-dismiss").addEventListener("click", () => setModal("about-modal", false));
-$("image-modal").addEventListener("click", () => setModal("image-modal", false));
+on("prev-site", "click", () => navigate(-1));
+on("next-site", "click", () => navigate(1));
+on("export-page", "click", exportPage);
+on("export-close", "click", closeExportSheet);
+on("export-copy", "click", copyExportUrl);
+on("export-share", "click", () => {
+  shareListing($("export-place").textContent, $("export-url").value);
+});
+on("export-modal", "click", (event) => {
+  if (event.target === $("export-modal")) closeExportSheet();
+});
+on("photo-prev", "click", () => showPhoto(state.photoIndex - 1));
+on("photo-next", "click", () => showPhoto(state.photoIndex + 1));
+on("oldest-open", "click", () => openZoom($("oldest-img").src, $("oldest-img").alt));
+on("scan-btn", "click", startScanner);
+on("scanner-close", "click", stopScanner);
+on("about-open", "click", () => setModal("about-modal", true));
+on("about-close", "click", () => setModal("about-modal", false));
+on("about-dismiss", "click", () => setModal("about-modal", false));
+on("image-modal", "click", () => setModal("image-modal", false));
 
-$("save-btn").addEventListener("click", () => {
+on("save-btn", "click", () => {
   if (!state.current || $("save-btn").disabled) return;
   const saved = toggleId(FAVOURITES, state.current.id);
   setStackButton($("save-btn"), saved ? "✅" : "⭐", saved ? "Saved" : "Save");
   setNote(saved ? "Saved on this phone." : "Removed from saved places.");
 });
 
-$("tour-toggle").addEventListener("click", () => {
+on("tour-toggle", "click", () => {
   if (!state.current) return;
   const included = toggleId(TOUR, state.current.id);
   $("tour-toggle").textContent = included ? "Remove from tour" : "Add to tour";
@@ -580,30 +1045,38 @@ $("tour-toggle").addEventListener("click", () => {
   if (state.browsing === "tour") useList(readJson(TOUR, []), "tour");
 });
 
-$("saved-btn").addEventListener("click", () => useList(readJson(FAVOURITES, []), "saved"));
-$("visited-btn").addEventListener("click", () => useList(readJson(VISITS, []).map((item) => item.id), "visited"));
-$("tour-btn").addEventListener("click", () => useList(readJson(TOUR, []), "tour"));
+on("saved-btn", "click", () => useList(readJson(FAVOURITES, []), "saved"));
+on("visited-btn", "click", () => useList(readJson(VISITS, []).map((item) => item.id), "visited"));
+on("tour-btn", "click", () => useList(readJson(TOUR, []), "tour"));
 
-$("email-saved").addEventListener("click", () => {
+on("email-saved", "click", () => {
   emailSites(sitesFromIds(readJson(FAVOURITES, [])), "There are no saved places on this phone yet.");
 });
-$("email-tour").addEventListener("click", () => {
+on("email-tour", "click", () => {
   emailSites(sitesFromIds(readJson(TOUR, [])), "There are no tour stops on this phone yet.");
 });
 
-$("search-field").addEventListener("change", () => {
-  $("search-input").placeholder = placeholders[$("search-field").value] || "";
+on("place-field", "change", () => setSearchPlaceholder("place-field", "place-input"));
+on("topic-field", "change", () => {
+  setSearchPlaceholder("topic-field", "topic-input");
+  toggleTopicControls();
 });
+on("filter-sites", "click", () => setGroup("sites", { random: true }));
+on("filter-shops", "click", () => setGroup("shops", { random: true }));
+on("filter-restaurants", "click", () => setGroup("restaurants", { random: true }));
 
-$("search-form").addEventListener("submit", (event) => {
+on("search-form", "submit", (event) => {
   event.preventDefault();
   state.results = searchSites(state.sites, state.organisations, {
-    field: $("search-field").value,
-    query: $("search-input").value,
+    group: state.group,
+    placeField: $("place-field").value,
+    placeQuery: $("place-input").value,
+    topicField: $("topic-field").value,
+    topicQuery: topicQueryValue(),
   });
   state.index = 0;
   state.browsing = "results";
-  setNote(state.results.length ? `${state.results.length} public ${state.results.length === 1 ? "site" : "sites"}.` : "");
+  setNote("");
   showCurrent();
   $("place-name").scrollIntoView({ block: "start" });
 });
@@ -612,12 +1085,17 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   setModal("about-modal", false);
   setModal("image-modal", false);
+  closeExportSheet();
   stopScanner();
 });
 
-bindPhotoSwipe();
-if (speechSupported()) {
-  loadSpeechVoices();
-  window.speechSynthesis.addEventListener("voiceschanged", loadSpeechVoices);
+try {
+  bindPhotoSwipe();
+  if (speakerVisible()) {
+    loadSpeechVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadSpeechVoices);
+  }
+} catch {
+  // Speech and swipe extras must not stop the catalogue loading on iPhone.
 }
 init();

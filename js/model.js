@@ -72,6 +72,61 @@ export function decadeLabel(site) {
   return decade == null ? "" : `${decade}s`;
 }
 
+export const MAX_PHOTOS = 20;
+export const UNCATEGORISED = "Uncategorised";
+export const DEFAULT_HERITAGE_CATEGORIES = ["Civic", "Industrial", "Recreation", "Transport"];
+export const DEFAULT_SHOP_CATEGORIES = ["Restaurants", "Shops"];
+
+export function organisationKind(org) {
+  return org?.kind === "shop" ? "shop" : "site";
+}
+
+export function shopGroupOf(org, site) {
+  if (organisationKind(org) !== "shop") return "";
+  if (site?.shopGroup === "restaurants" || org?.shopGroup === "restaurants") return "restaurants";
+  return "shops";
+}
+
+export function listingGroup(site, org) {
+  return organisationKind(org) === "shop" ? shopGroupOf(org, site) : "sites";
+}
+
+export function uniqueCategoryNames(list, fallback = []) {
+  const seen = new Set();
+  const names = [];
+  for (const item of list || []) {
+    const name = String(item || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (!names.length) {
+    for (const item of fallback) {
+      const key = item.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(item);
+    }
+  }
+  return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+export function categoriesForKind(kind, settings) {
+  if (kind === "shop") return uniqueCategoryNames(settings?.shopCategories, DEFAULT_SHOP_CATEGORIES);
+  return uniqueCategoryNames(settings?.heritageCategories, DEFAULT_HERITAGE_CATEGORIES);
+}
+
+export function renameSiteCategory(sites, from, to) {
+  const nextName = String(to || "").trim() || UNCATEGORISED;
+  return (sites || []).map((site) => (site.category === from ? { ...site, category: nextName } : site));
+}
+
+export function deleteSiteCategory(sites, name) {
+  return (sites || []).map((site) => (site.category === name ? { ...site, category: UNCATEGORISED } : site));
+}
+
 function fieldText(site, field) {
   const values = {
     category: site.category,
@@ -95,14 +150,27 @@ function matchesDecade(site, query) {
   return String(decade).startsWith(digits);
 }
 
-export function searchSites(sites, organisations, { field = "text", query = "" } = {}, now = new Date()) {
-  const listed = sites.filter((site) => isListed(site, findOrganisation(organisations, site.organisationId), now));
+function matchesSearch(site, field, query) {
   const q = String(query || "").trim().toLowerCase();
-  if (!q) return listed;
-  return listed.filter((site) => {
-    if (field === "decade") return matchesDecade(site, q);
-    return fieldText(site, field).includes(q);
+  if (!q) return true;
+  if (field === "decade") return matchesDecade(site, q);
+  return fieldText(site, field).includes(q);
+}
+
+export function searchSites(sites, organisations, options = {}, now = new Date()) {
+  const listed = sites.filter((site) => {
+    const org = findOrganisation(organisations, site.organisationId);
+    if (!isListed(site, org, now)) return false;
+    if (options.group && listingGroup(site, org) !== options.group) return false;
+    return true;
   });
+  const filters = options.placeField || options.topicField || options.placeQuery || options.topicQuery
+    ? [
+      { field: options.placeField || "city", query: options.placeQuery || "" },
+      { field: options.topicField || "text", query: options.topicQuery || "" },
+    ]
+    : [{ field: options.field || "text", query: options.query || "" }];
+  return listed.filter((site) => filters.every((filter) => matchesSearch(site, filter.field, filter.query)));
 }
 
 export function formatPhotoCode(sponsorNumber, reference) {

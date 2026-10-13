@@ -58,19 +58,60 @@ function writeJson(name, value) {
   fs.writeFileSync(dataFile(name), `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function cleanCategoryList(list, fallback) {
+  const seen = new Set();
+  const names = [];
+  for (const item of list || []) {
+    const name = String(item || "").trim().slice(0, 40);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (!names.length) names.push(...fallback);
+  names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return names;
+}
+
 function readSettings() {
   try {
     const data = readJson("settings.json");
-    return { sponsorNotice: String(data?.sponsorNotice || "").trim().slice(0, 400) };
+    return {
+      sponsorNotice: String(data?.sponsorNotice || "").trim().slice(0, 400),
+      heritageCategories: cleanCategoryList(data?.heritageCategories, ["Civic", "Industrial", "Recreation", "Transport"]),
+      shopCategories: cleanCategoryList(data?.shopCategories, ["Restaurants", "Shops"]),
+    };
   } catch {
-    return { sponsorNotice: "" };
+    return {
+      sponsorNotice: "",
+      heritageCategories: ["Civic", "Industrial", "Recreation", "Transport"],
+      shopCategories: ["Restaurants", "Shops"],
+    };
   }
 }
 
 function writeSettings(value) {
-  const settings = { sponsorNotice: String(value?.sponsorNotice || "").trim().slice(0, 400) };
+  const current = readSettings();
+  const settings = {
+    sponsorNotice: value?.sponsorNotice == null ? current.sponsorNotice : String(value.sponsorNotice || "").trim().slice(0, 400),
+    heritageCategories: value?.heritageCategories ? cleanCategoryList(value.heritageCategories, current.heritageCategories) : current.heritageCategories,
+    shopCategories: value?.shopCategories ? cleanCategoryList(value.shopCategories, current.shopCategories) : current.shopCategories,
+  };
   writeJson("settings.json", settings);
+  writeJson("categories.json", { heritage: settings.heritageCategories, shop: settings.shopCategories });
   return settings;
+}
+
+function organisationKindValue(value, fallback = "site") {
+  if (value === "shop" || value === "site") return value;
+  return fallback === "shop" ? "shop" : "site";
+}
+
+function shopGroupValue(kind, value, fallback = "shops") {
+  if (kind !== "shop") return "";
+  if (value === "restaurants" || value === "shops") return value;
+  return fallback === "restaurants" ? "restaurants" : "shops";
 }
 
 function logActivity(entry) {
@@ -120,7 +161,12 @@ function normaliseSite(site, organisations) {
   const buildYear = String(site.buildYear || "").trim();
   const fromText = Number(buildYear.match(/\d{3,4}/)?.[0]);
   const yearStart = Number(site.yearStart) || fromText || null;
-  const photos = (site.photos || []).map((photo) => {
+  if ((site.photos || []).length > 20) {
+    const error = new Error("A listing can have at most 20 photographs.");
+    error.status = 400;
+    throw error;
+  }
+    const photos = (site.photos || []).map((photo) => {
     const parsed = parsePhotoCode(photo.code);
     if (!parsed || parsed.sponsorNumber !== org.number) {
       const error = new Error(`Photograph codes for this sponsor start with ${org.number}-`);
@@ -148,6 +194,9 @@ function normaliseSite(site, organisations) {
     yearEnd: Number(site.yearEnd) || yearStart,
     circa: Boolean(site.circa),
     category: String(site.category || "").trim(),
+    shopGroup: org.kind === "shop"
+      ? (site.shopGroup === "restaurants" || org.shopGroup === "restaurants" ? "restaurants" : "shops")
+      : "",
     country: String(site.country || "Australia").trim(),
     state: String(site.state || "Victoria").trim(),
     city: String(site.city || "Geelong").trim(),
@@ -421,6 +470,93 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/users" && req.method === "GET") {
+      const user = requireUser(req, res);
+      if (!user) return;
+      const organisationId = String(url.searchParams.get("organisationId") || "").trim();
+      if (!organisationId) {
+        sendJson(res, 400, { error: "Choose a sponsor." });
+        return;
+      }
+      if (!isSiteAdmin(user) && sponsorOrganisationId(user) !== organisationId) {
+        sendJson(res, 403, { error: "You can only view your own login." });
+        return;
+      }
+      const found = readJson("users.json").find((item) => item.role === "sponsor" && item.organisationId === organisationId);
+      sendJson(res, 200, { username: found?.username || "" });
+      return;
+    }
+
+    if (url.pathname === "/api/users" && req.method === "PUT") {
+      const user = requireUser(req, res);
+      if (!user) return;
+      const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
+      const organisationId = String(body.organisationId || "").trim();
+      const username = normaliseUsername(body.username);
+      const password = String(body.password || "");
+      if (!organisationId) {
+        sendJson(res, 400, { error: "Choose a sponsor." });
+        return;
+      }
+      if (!isSiteAdmin(user) && sponsorOrganisationId(user) !== organisationId) {
+        sendJson(res, 403, { error: "You can only change your own login." });
+        return;
+      }
+      if (!findOrganisation(readJson("organisations.json"), organisationId)) {
+        sendJson(res, 400, { error: "Choose a sponsor for this login." });
+        return;
+      }
+      const users = readJson("users.json");
+      const index = users.findIndex((item) => item.role === "sponsor" && item.organisationId === organisationId);
+      if (index < 0) {
+        if (!validUsername(username) || password.length < 8) {
+          sendJson(res, 400, { error: "A new login needs a login name and a password of at least 8 characters." });
+          return;
+        }
+        if (users.some((item) => item.username === username)) {
+          sendJson(res, 400, { error: "That login name is already used." });
+          return;
+        }
+        users.push({ username, role: "sponsor", organisationId, ...hashPassword(password) });
+        writeJson("users.json", users);
+        logActivity({ action: "create-user", username, organisationId, by: user.username });
+        sendJson(res, 200, { username });
+        return;
+      }
+      if (username && !validUsername(username)) {
+        sendJson(res, 400, { error: "A login name uses 3–40 letters, numbers, dots, hyphens, or underscores." });
+        return;
+      }
+      if (username && users.some((item, i) => item.username === username && i !== index)) {
+        sendJson(res, 400, { error: "That login name is already used." });
+        return;
+      }
+      if (password && password.length < 8) {
+        sendJson(res, 400, { error: "A new password needs at least 8 characters." });
+        return;
+      }
+      if (!username && !password) {
+        sendJson(res, 200, { username: users[index].username });
+        return;
+      }
+      const previous = users[index].username;
+      const nextName = username || previous;
+      users[index] = {
+        ...users[index],
+        username: nextName,
+        ...(password ? hashPassword(password) : {}),
+      };
+      writeJson("users.json", users);
+      if (previous !== nextName) {
+        for (const session of sessions.values()) {
+          if (session.username === previous) session.username = nextName;
+        }
+      }
+      logActivity({ action: "update-user", username: nextName, organisationId, by: user.username });
+      sendJson(res, 200, { username: nextName });
+      return;
+    }
+
     if (url.pathname === "/api/users" && req.method === "POST") {
       const admin = requireAdmin(req, res);
       if (!admin) return;
@@ -543,12 +679,21 @@ const server = http.createServer(async (req, res) => {
       if (!isSiteAdmin(user)) {
         const orgId = sponsorOrganisationId(user);
         const edited = incoming.find((item) => item.id === orgId) || incoming[0];
+        const currentOrg = current.find((org) => org.id === orgId);
+        const kind = organisationKindValue(currentOrg?.kind, "site");
         const email = String(edited?.email || "").trim();
-        if (!email) {
-          sendJson(res, 400, { error: "Enter a public enquiry email address." });
+        const contactName = String(edited?.contactName || "").trim().slice(0, 80);
+        const contactEmail = String(edited?.contactEmail || "").trim().slice(0, 120);
+        const name = String(edited?.name || currentOrg?.name || "").trim() || currentOrg?.name;
+        if (kind !== "shop" && !email) {
+          sendJson(res, 400, { error: "Enter a public contact email address." });
           return;
         }
-        const next = current.map((org) => (org.id === orgId ? { ...org, email } : org));
+        const next = current.map((org) => {
+          if (org.id !== orgId) return org;
+          const shopGroup = shopGroupValue(kind, edited?.shopGroup, org.shopGroup);
+          return { ...org, email, contactName, contactEmail, name, ...(kind === "shop" ? { shopGroup } : {}) };
+        });
         writeJson("organisations.json", next);
         logActivity({ action: "save-organisations", by: user.username });
         sendJson(res, 200, organisationsForActor(next, user));
@@ -557,18 +702,23 @@ const server = http.createServer(async (req, res) => {
       const next = current.map((org) => {
         const edited = incoming.find((item) => item.id === org.id);
         if (!edited) return org;
-        const email = String(edited.email || org.email).trim();
+        const kind = organisationKindValue(org.kind, "site");
+        const email = String(edited.email ?? org.email ?? "").trim();
+        const contactName = String(edited.contactName ?? org.contactName ?? "").trim().slice(0, 80);
+        const contactEmail = String(edited.contactEmail ?? org.contactEmail ?? "").trim().slice(0, 120);
         const name = String(edited.name || org.name).trim() || org.name;
         const subscribedAt = /^\d{4}-\d{2}-\d{2}$/.test(edited.subscribedAt) ? edited.subscribedAt : org.subscribedAt;
-        return { ...org, email, name, subscribedAt };
+        const shopGroup = shopGroupValue(kind, edited.shopGroup, org.shopGroup);
+        return { ...org, email, contactName, contactEmail, name, subscribedAt, kind, ...(kind === "shop" ? { shopGroup } : { shopGroup: undefined }) };
       });
       for (const item of incoming) {
         if (next.some((org) => org.id === item.id)) continue;
         const id = String(item.id || "").trim();
         const name = String(item.name || "").trim();
+        const kind = organisationKindValue(item.kind, "site");
         const email = String(item.email || "").trim();
-        if (!/^[a-z0-9-]{1,80}$/.test(id) || !name || !email) {
-          sendJson(res, 400, { error: "A new sponsor needs a name and an email." });
+        if (!/^[a-z0-9-]{1,80}$/.test(id) || !name || (kind !== "shop" && !email)) {
+          sendJson(res, 400, { error: kind === "shop" ? "A new shop sponsor needs a name." : "A new sponsor needs a name and an email." });
           return;
         }
         const requested = Number(item.number);
@@ -576,12 +726,17 @@ const server = http.createServer(async (req, res) => {
           ? requested
           : Math.max(0, ...next.map((org) => Number(org.number) || 0)) + 1;
         const subscribedAt = /^\d{4}-\d{2}-\d{2}$/.test(item.subscribedAt) ? item.subscribedAt : new Date().toISOString().slice(0, 10);
+        const shopGroup = shopGroupValue(kind, item.shopGroup, "shops");
         next.push({
           number: sponsorNumber,
           id,
           name,
-          type: String(item.type || "Organisation"),
+          type: String(item.type || (kind === "shop" ? "Shop" : "Organisation")),
+          kind,
+          ...(kind === "shop" ? { shopGroup } : {}),
           email,
+          contactName: String(item.contactName || "").trim().slice(0, 80),
+          contactEmail: String(item.contactEmail || "").trim().slice(0, 120),
           subscribedAt,
           createdAt: /^\d{4}-\d{2}-\d{2}$/.test(item.createdAt) ? item.createdAt : subscribedAt,
         });
@@ -589,6 +744,34 @@ const server = http.createServer(async (req, res) => {
       writeJson("organisations.json", next);
       logActivity({ action: "save-organisations", by: user.username });
       sendJson(res, 200, next);
+      return;
+    }
+
+    if (url.pathname === "/api/delete-sponsor" && req.method === "POST") {
+      const admin = requireAdmin(req, res);
+      if (!admin) return;
+      const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
+      const organisationId = String(body.organisationId || "").trim();
+      const deleteListings = body.deleteListings !== false && body.deleteListings !== "false";
+      const organisations = readJson("organisations.json");
+      if (!findOrganisation(organisations, organisationId)) {
+        sendJson(res, 400, { error: "Choose a sponsor to delete." });
+        return;
+      }
+      const nextOrgs = organisations.filter((org) => org.id !== organisationId);
+      const currentSites = readJson("sites.json");
+      const nextSites = deleteListings
+        ? currentSites.filter((site) => site.organisationId !== organisationId)
+        : currentSites;
+      const nextUsers = readJson("users.json").filter((item) => !(item.role === "sponsor" && item.organisationId === organisationId));
+      writeJson("organisations.json", nextOrgs);
+      writeJson("sites.json", nextSites);
+      writeJson("users.json", nextUsers);
+      logActivity({ action: "delete-sponsor", organisationId, deleteListings, by: admin.username });
+      sendJson(res, 200, {
+        organisations: organisationsForActor(nextOrgs, admin),
+        sites: sitesForActor(nextSites, admin),
+      });
       return;
     }
 

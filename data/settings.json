@@ -1,3 +1,5 @@
 {
-  "sponsorNotice": ""
+  "sponsorNotice": "",
+  "heritageCategories": ["Civic", "Industrial", "Recreation", "Transport"],
+  "shopCategories": ["Restaurants", "Shops"]
 }

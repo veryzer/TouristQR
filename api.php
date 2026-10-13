@@ -49,26 +49,64 @@ function write_json(string $name, $value): void {
     }
 }
 
+function clean_category_list($list, array $fallback): array {
+    $seen = [];
+    $names = [];
+    if (!is_array($list)) {
+        $list = [];
+    }
+    foreach ($list as $item) {
+        $name = trim((string) $item);
+        if ($name === "") {
+            continue;
+        }
+        if (strlen($name) > 40) {
+            $name = substr($name, 0, 40);
+        }
+        $key = strtolower($name);
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $names[] = $name;
+    }
+    if (!$names) {
+        $names = $fallback;
+    }
+    natcasesort($names);
+    return array_values($names);
+}
+
 function read_settings(): array {
+    $defaultsHeritage = ["Civic", "Industrial", "Recreation", "Transport"];
+    $defaultsShop = ["Restaurants", "Shops"];
     $path = data_path("settings.json");
     if (!is_readable($path)) {
-        return ["sponsorNotice" => ""];
+        return ["sponsorNotice" => "", "heritageCategories" => $defaultsHeritage, "shopCategories" => $defaultsShop];
     }
     $decoded = json_decode((string) file_get_contents($path), true);
     $notice = is_array($decoded) ? trim((string) ($decoded["sponsorNotice"] ?? "")) : "";
     if (strlen($notice) > 400) {
         $notice = substr($notice, 0, 400);
     }
-    return ["sponsorNotice" => $notice];
+    return [
+        "sponsorNotice" => $notice,
+        "heritageCategories" => clean_category_list(is_array($decoded) ? ($decoded["heritageCategories"] ?? []) : [], $defaultsHeritage),
+        "shopCategories" => clean_category_list(is_array($decoded) ? ($decoded["shopCategories"] ?? []) : [], $defaultsShop),
+    ];
 }
 
 function write_settings(array $value): array {
-    $notice = trim((string) ($value["sponsorNotice"] ?? ""));
+    $current = read_settings();
+    $notice = array_key_exists("sponsorNotice", $value) ? trim((string) ($value["sponsorNotice"] ?? "")) : $current["sponsorNotice"];
     if (strlen($notice) > 400) {
         $notice = substr($notice, 0, 400);
     }
-    $settings = ["sponsorNotice" => $notice];
+    $heritage = isset($value["heritageCategories"]) ? clean_category_list($value["heritageCategories"], $current["heritageCategories"]) : $current["heritageCategories"];
+    $shop = isset($value["shopCategories"]) ? clean_category_list($value["shopCategories"], $current["shopCategories"]) : $current["shopCategories"];
+    $settings = ["sponsorNotice" => $notice, "heritageCategories" => $heritage, "shopCategories" => $shop];
     write_json("settings.json", $settings);
+    write_json("categories.json", ["heritage" => $heritage, "shop" => $shop]);
     return $settings;
 }
 
@@ -270,6 +308,8 @@ function apply_restore(array $currentOrgs, array $currentSites, array $backup, a
             $organisations[] = array_merge($org, [
                 "name" => $incomingOrg["name"] ?? $org["name"],
                 "email" => $incomingOrg["email"] ?? $org["email"],
+                "contactName" => $incomingOrg["contactName"] ?? $org["contactName"] ?? "",
+                "contactEmail" => $incomingOrg["contactEmail"] ?? $org["contactEmail"] ?? "",
                 "subscribedAt" => $incomingOrg["subscribedAt"] ?? $org["subscribedAt"],
                 "number" => $org["number"],
                 "id" => $org["id"],
@@ -418,6 +458,96 @@ try {
         send_json(200, $rows);
     }
 
+    if ($route === "users" && $method === "GET") {
+        $user = require_user();
+        $organisationId = trim((string) ($_GET["organisationId"] ?? ""));
+        if ($organisationId === "") {
+            send_json(400, ["error" => "Choose a sponsor."]);
+        }
+        if (!is_admin($user) && (string) ($user["organisationId"] ?? "") !== $organisationId) {
+            send_json(403, ["error" => "You can only view your own login."]);
+        }
+        $username = "";
+        foreach (read_json("users.json") as $item) {
+            if (($item["role"] ?? "") === "sponsor" && ($item["organisationId"] ?? "") === $organisationId) {
+                $username = (string) ($item["username"] ?? "");
+                break;
+            }
+        }
+        send_json(200, ["username" => $username]);
+    }
+
+    if ($route === "users" && $method === "PUT") {
+        $user = require_user();
+        $body = read_json_body();
+        $organisationId = trim((string) ($body["organisationId"] ?? ""));
+        $username = strtolower(trim((string) ($body["username"] ?? "")));
+        $password = (string) ($body["password"] ?? "");
+        if ($organisationId === "") {
+            send_json(400, ["error" => "Choose a sponsor."]);
+        }
+        if (!is_admin($user) && (string) ($user["organisationId"] ?? "") !== $organisationId) {
+            send_json(403, ["error" => "You can only change your own login."]);
+        }
+        if (!find_org(read_json("organisations.json"), $organisationId)) {
+            send_json(400, ["error" => "Choose a sponsor for this login."]);
+        }
+        $users = read_json("users.json");
+        $index = -1;
+        foreach ($users as $i => $item) {
+            if (($item["role"] ?? "") === "sponsor" && ($item["organisationId"] ?? "") === $organisationId) {
+                $index = $i;
+                break;
+            }
+        }
+        if ($index < 0) {
+            if (!preg_match('/^[a-z0-9._-]{3,40}$/', $username) || strlen($password) < 8) {
+                send_json(400, ["error" => "A new login needs a login name and a password of at least 8 characters."]);
+            }
+            foreach ($users as $item) {
+                if (($item["username"] ?? "") === $username) {
+                    send_json(400, ["error" => "That login name is already used."]);
+                }
+            }
+            $users[] = array_merge([
+                "username" => $username,
+                "role" => "sponsor",
+                "organisationId" => $organisationId,
+            ], hash_password($password));
+            write_json("users.json", $users);
+            log_activity(["action" => "create-user", "username" => $username, "organisationId" => $organisationId, "by" => $user["username"]]);
+            send_json(200, ["username" => $username]);
+        }
+        if ($username !== "" && !preg_match('/^[a-z0-9._-]{3,40}$/', $username)) {
+            send_json(400, ["error" => "A login name uses 3–40 letters, numbers, dots, hyphens, or underscores."]);
+        }
+        if ($username !== "") {
+            foreach ($users as $i => $item) {
+                if (($item["username"] ?? "") === $username && $i !== $index) {
+                    send_json(400, ["error" => "That login name is already used."]);
+                }
+            }
+        }
+        if ($password !== "" && strlen($password) < 8) {
+            send_json(400, ["error" => "A new password needs at least 8 characters."]);
+        }
+        $previous = (string) ($users[$index]["username"] ?? "");
+        $nextName = $username !== "" ? $username : $previous;
+        if ($username === "" && $password === "") {
+            send_json(200, ["username" => $previous]);
+        }
+        $users[$index]["username"] = $nextName;
+        if ($password !== "") {
+            $users[$index] = array_merge($users[$index], hash_password($password));
+        }
+        write_json("users.json", $users);
+        if ($previous !== $nextName && ($user["username"] ?? "") === $previous) {
+            $_SESSION["username"] = $nextName;
+        }
+        log_activity(["action" => "update-user", "username" => $nextName, "organisationId" => $organisationId, "by" => $user["username"]]);
+        send_json(200, ["username" => $nextName]);
+    }
+
     if ($route === "users" && $method === "POST") {
         $admin = require_admin();
         $body = read_json_body();
@@ -529,12 +659,33 @@ try {
                 $edited = $incoming[0] ?? [];
             }
             $email = trim((string) ($edited["email"] ?? ""));
-            if ($email === "") {
-                send_json(400, ["error" => "Enter a public enquiry email address."]);
+            $contactName = substr(trim((string) ($edited["contactName"] ?? "")), 0, 80);
+            $contactEmail = substr(trim((string) ($edited["contactEmail"] ?? "")), 0, 120);
+            $name = trim((string) ($edited["name"] ?? ""));
+            $kind = "site";
+            foreach ($current as $org) {
+                if (($org["id"] ?? "") === $orgId) {
+                    $kind = (($org["kind"] ?? "site") === "shop") ? "shop" : "site";
+                    if ($name === "") {
+                        $name = (string) ($org["name"] ?? "");
+                    }
+                    break;
+                }
+            }
+            if ($kind !== "shop" && $email === "") {
+                send_json(400, ["error" => "Enter a public contact email address."]);
             }
             foreach ($current as $index => $org) {
                 if (($org["id"] ?? "") === $orgId) {
                     $current[$index]["email"] = $email;
+                    $current[$index]["contactName"] = $contactName;
+                    $current[$index]["contactEmail"] = $contactEmail;
+                    if ($name !== "") {
+                        $current[$index]["name"] = $name;
+                    }
+                    if ($kind === "shop") {
+                        $current[$index]["shopGroup"] = (($edited["shopGroup"] ?? $org["shopGroup"] ?? "shops") === "restaurants") ? "restaurants" : "shops";
+                    }
                 }
             }
             write_json("organisations.json", $current);
@@ -563,11 +714,24 @@ try {
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $subscribedAt)) {
                 $subscribedAt = $org["subscribedAt"];
             }
-            $next[] = array_merge($org, [
+            $kind = (($org["kind"] ?? "site") === "shop") ? "shop" : "site";
+            $shopGroup = $kind === "shop"
+                ? ((($edited["shopGroup"] ?? $org["shopGroup"] ?? "shops") === "restaurants") ? "restaurants" : "shops")
+                : "";
+            $merged = array_merge($org, [
                 "email" => $email,
+                "contactName" => substr(trim((string) ($edited["contactName"] ?? $org["contactName"] ?? "")), 0, 80),
+                "contactEmail" => substr(trim((string) ($edited["contactEmail"] ?? $org["contactEmail"] ?? "")), 0, 120),
                 "name" => $name,
                 "subscribedAt" => $subscribedAt,
+                "kind" => $kind,
             ]);
+            if ($kind === "shop") {
+                $merged["shopGroup"] = $shopGroup;
+            } else {
+                unset($merged["shopGroup"]);
+            }
+            $next[] = $merged;
         }
         foreach ($incoming as $item) {
             $id = trim((string) ($item["id"] ?? ""));
@@ -583,26 +747,59 @@ try {
             }
             $name = trim((string) ($item["name"] ?? ""));
             $email = trim((string) ($item["email"] ?? ""));
-            if ($name === "" || $email === "") {
-                send_json(400, ["error" => "A new sponsor needs a name and an email."]);
+            $kind = (($item["kind"] ?? "site") === "shop") ? "shop" : "site";
+            if ($name === "" || ($kind !== "shop" && $email === "")) {
+                send_json(400, ["error" => $kind === "shop" ? "A new shop sponsor needs a name." : "A new sponsor needs a name and an email."]);
             }
             $max = 0;
             foreach ($next as $org) {
                 $max = max($max, (int) ($org["number"] ?? 0));
             }
-            $next[] = [
+            $shopGroup = $kind === "shop"
+                ? ((($item["shopGroup"] ?? "shops") === "restaurants") ? "restaurants" : "shops")
+                : "";
+            $newOrg = [
                 "number" => $max + 1,
                 "id" => $id,
                 "name" => $name,
-                "type" => $item["type"] ?? "Organisation",
+                "type" => $item["type"] ?? ($kind === "shop" ? "Shop" : "Organisation"),
+                "kind" => $kind,
                 "email" => $email,
+                "contactName" => substr(trim((string) ($item["contactName"] ?? "")), 0, 80),
+                "contactEmail" => substr(trim((string) ($item["contactEmail"] ?? "")), 0, 120),
                 "subscribedAt" => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($item["subscribedAt"] ?? "")) ? $item["subscribedAt"] : gmdate("Y-m-d"),
                 "createdAt" => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($item["createdAt"] ?? "")) ? $item["createdAt"] : gmdate("Y-m-d"),
             ];
+            if ($kind === "shop") {
+                $newOrg["shopGroup"] = $shopGroup;
+            }
+            $next[] = $newOrg;
         }
         write_json("organisations.json", $next);
         log_activity(["action" => "save-organisations", "by" => $user["username"]]);
         send_json(200, $next);
+    }
+
+    if ($route === "delete-sponsor" && $method === "POST") {
+        $admin = require_admin();
+        $body = read_json_body();
+        $organisationId = trim((string) ($body["organisationId"] ?? ""));
+        $deleteListings = ($body["deleteListings"] ?? true) !== false && ($body["deleteListings"] ?? true) !== "false";
+        $orgs = read_json("organisations.json");
+        if (!find_org($orgs, $organisationId)) {
+            send_json(400, ["error" => "Choose a sponsor to delete."]);
+        }
+        $orgs = array_values(array_filter($orgs, fn($org) => ($org["id"] ?? "") !== $organisationId));
+        $sites = read_json("sites.json");
+        if ($deleteListings) {
+            $sites = array_values(array_filter($sites, fn($site) => ($site["organisationId"] ?? "") !== $organisationId));
+        }
+        $users = array_values(array_filter(read_json("users.json"), fn($item) => !(($item["role"] ?? "") === "sponsor" && ($item["organisationId"] ?? "") === $organisationId)));
+        write_json("organisations.json", $orgs);
+        write_json("sites.json", $sites);
+        write_json("users.json", $users);
+        log_activity(["action" => "delete-sponsor", "organisationId" => $organisationId, "deleteListings" => $deleteListings, "by" => $admin["username"]]);
+        send_json(200, ["organisations" => $orgs, "sites" => $sites]);
     }
 
     if ($route === "sites" && $method === "PUT") {

@@ -1,22 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HPTSX3NLZY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-HPTSX3NLZY');
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1e3a8a">
     <title>TouristQR</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
+        .hidden { display: none !important; }
         #primary-image.is-historical { filter: sepia(0.35); }
+        header.app-bar {
+            background: #1e3a8a;
+            color: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            padding: 0.4rem 0.75rem 0.3rem;
+            box-shadow: 0 4px 6px rgb(0 0 0 / 0.12);
+        }
+        header.app-bar .app-bar-inner {
+            max-width: 28rem;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        header.app-bar .app-bar-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0;
+        }
+        header.app-bar #about-open {
+            background: none;
+            border: 0;
+            color: inherit;
+            font-size: 1.125rem;
+            font-weight: 700;
+            letter-spacing: 0.025em;
+            line-height: 1.2;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        header.app-bar #sponsor-badge {
+            font-size: 0.7rem;
+            background: #1e40af;
+            color: #dbeafe;
+            padding: 0.1rem 0.5rem;
+            border-radius: 9999px;
+            font-weight: 500;
+            text-align: right;
+            line-height: 1.2;
+            max-width: 58%;
+            text-decoration: none;
+        }
+        header.app-bar .group-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.2rem;
+        }
+        header.app-bar .group-tabs button {
+            border: 0;
+            background: transparent;
+            color: #dbeafe;
+            font-size: 0.7rem;
+            font-weight: 500;
+            line-height: 1.2;
+            padding: 0.28rem 0.2rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        header.app-bar .group-tabs button:hover {
+            background: #1e40af;
+        }
+        header.app-bar .group-tabs button[aria-selected="true"] {
+            background: #fff;
+            color: #1e3a8a;
+            font-weight: 600;
+        }
+        header.app-bar .group-tabs button[aria-selected="true"]:hover {
+            background: #fff;
+        }
     </style>
+    <script src="https://cdn.tailwindcss.com" async></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <header class="bg-blue-900 text-white py-4 px-6 shadow-md sticky top-0 z-20">
-        <div class="max-w-md mx-auto flex justify-between items-center gap-3">
-            <button type="button" id="about-open" class="text-xl font-bold tracking-wide hover:underline shrink-0">TouristQR</button>
-            <a id="sponsor-badge" class="text-xs bg-blue-800 text-blue-100 px-2.5 py-1 rounded-full font-medium text-right leading-snug max-w-[58%] hover:bg-blue-700" href="#">Sponsored by</a>
+    <header class="app-bar">
+        <div class="app-bar-inner">
+            <div class="app-bar-top">
+                <button type="button" id="about-open">TouristQR</button>
+                <a id="sponsor-badge" href="#">Sponsored by</a>
+            </div>
+            <div class="group-tabs" role="tablist" aria-label="Listing type">
+                <button type="button" id="filter-sites" role="tab" aria-selected="true">Sites</button>
+                <button type="button" id="filter-shops" role="tab" aria-selected="false">Shops</button>
+                <button type="button" id="filter-restaurants" role="tab" aria-selected="false">Restaurants</button>
+            </div>
         </div>
     </header>
 
@@ -25,12 +119,15 @@
         <div class="flex justify-between items-start gap-3">
             <div class="min-w-0">
                 <h2 id="place-name" class="text-2xl font-bold text-slate-900 scroll-mt-20">Loading site…</h2>
-                <p id="year-row" class="text-xs text-slate-500">Established / Built: <span id="build-year" class="font-semibold text-slate-700">–</span></p>
+                <p id="year-row" class="text-xs text-slate-500"><span id="year-label">Established / Built</span>: <span id="build-year" class="font-semibold text-slate-700">–</span></p>
                 <p id="result-label" class="text-xs text-slate-500 mt-1" aria-live="polite"></p>
             </div>
-            <div class="flex gap-1 shrink-0">
-                <button type="button" id="prev-site" aria-label="Previous site" title="Previous site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">⬅</button>
-                <button type="button" id="next-site" aria-label="Next site" title="Next site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">➡</button>
+            <div class="flex flex-col items-end gap-1 shrink-0">
+                <div class="flex gap-1">
+                    <button type="button" id="prev-site" aria-label="Previous site" title="Previous site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">⬅</button>
+                    <button type="button" id="next-site" aria-label="Next site" title="Next site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">➡</button>
+                </div>
+                <button type="button" id="export-page" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 shadow-sm">Export</button>
             </div>
         </div>
 
@@ -41,28 +138,33 @@
                     <button type="button" id="photo-prev" aria-label="Previous photograph" class="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 text-white text-lg leading-none">‹</button>
                     <button type="button" id="photo-next" aria-label="Next photograph" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 text-white text-lg leading-none">›</button>
                     <div class="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md pointer-events-none">Tap to zoom</div>
-                    <div id="photo-code" class="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md font-mono pointer-events-none"></div>
+                    <div id="photo-code" class="hidden"></div>
                     <div id="photo-dots" class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 pointer-events-none"></div>
                     <p id="photo-status" class="sr-only" aria-live="polite"></p>
                 </div>
                 <div id="thumbnails-container" class="flex gap-2 overflow-x-auto"></div>
+                <p id="photo-caption" class="text-xs text-slate-500 italic text-center min-h-4"></p>
             </div>
 
             <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
                 <div class="flex items-center justify-between gap-2">
-                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
-                    <button type="button" id="history-speak" class="shrink-0 w-9 h-9 rounded-full border border-slate-200 bg-white text-base leading-none hover:bg-slate-50" aria-label="Read site history" title="Read site history">🔊</button>
+                    <h3 id="history-heading" class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
+                    <button type="button" id="history-speak" class="hidden shrink-0 w-9 h-9 rounded-full border border-slate-200 bg-white text-base leading-none hover:bg-slate-50" aria-label="Read site history" title="Read site history">🔊</button>
                 </div>
-                <p id="site-description" class="text-sm text-slate-600 leading-relaxed"></p>
+                <p id="site-description" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p>
+                <p id="shop-website-wrap" class="hidden text-sm">
+                    <span class="block text-xs font-bold uppercase tracking-wider text-slate-400">Website</span>
+                    <a id="shop-website" href="#" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline break-all"></a>
+                </p>
             </section>
 
             <section id="oldest-section" class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Oldest Known Photo</h3>
+                <h3 id="oldest-heading" class="text-xs font-bold uppercase tracking-wider text-slate-400">Oldest Known Photo</h3>
                 <button type="button" id="oldest-open" class="block w-full overflow-hidden rounded-lg bg-slate-200 aspect-[16/9]">
                     <img id="oldest-img" src="" alt="" class="w-full h-full object-cover filter sepia-[0.3]">
                 </button>
                 <p class="text-xs text-slate-500 italic text-center">
-                    <span id="oldest-code" class="not-italic font-mono text-slate-400"></span>
+                    <span id="oldest-code" class="hidden"></span>
                     <span id="oldest-caption"></span>
                 </p>
             </section>
@@ -73,7 +175,7 @@
         </section>
 
         <section id="view-empty" class="hidden bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-            <p class="text-sm text-slate-600 leading-relaxed">Nothing public matches that search. Try a suburb, a decade such as 1880s, or part of a name.</p>
+            <p class="text-sm text-slate-600 leading-relaxed">Nothing public matches that search. Try a suburb, a city, or part of a name.</p>
         </section>
 
         <section id="view-missing" class="hidden bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -96,18 +198,26 @@
 
     <footer class="mt-auto border-t border-slate-200 bg-white">
         <form id="search-form" class="max-w-md mx-auto p-3 space-y-2" role="search">
-            <label for="search-field" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Search public sites</label>
-            <select id="search-field" class="w-full border border-slate-300 rounded-xl p-2 text-sm bg-white">
-                <option value="category">Category</option>
-                <option value="country">Country</option>
-                <option value="state">State</option>
-                <option value="city">City</option>
-                <option value="suburb">Suburb</option>
-                <option value="mapArea">Map area</option>
-                <option value="decade">Decade</option>
-                <option value="text" selected>Text</option>
-            </select>
-            <input id="search-input" type="search" placeholder="Wool, tram, pavilion…" class="w-full border border-slate-300 rounded-xl p-2 text-sm">
+            <p class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Search public sites</p>
+            <div class="flex gap-2">
+                <label class="sr-only" for="place-field">Place</label>
+                <select id="place-field" class="w-32 shrink-0 border border-slate-300 rounded-xl p-2 text-sm bg-white">
+                    <option value="country">Country</option>
+                    <option value="city" selected>City</option>
+                    <option value="suburb">Suburb</option>
+                </select>
+                <input id="place-input" type="search" placeholder="Geelong" class="min-w-0 flex-1 border border-slate-300 rounded-xl p-2 text-sm">
+            </div>
+            <div class="flex gap-2">
+                <label class="sr-only" for="topic-field">Then search</label>
+                <select id="topic-field" class="w-32 shrink-0 border border-slate-300 rounded-xl p-2 text-sm bg-white">
+                    <option value="category">Category</option>
+                    <option value="decade">Decade</option>
+                    <option value="text" selected>Text</option>
+                </select>
+                <input id="topic-input" type="search" placeholder="Wool, tram, pavilion…" class="min-w-0 flex-1 border border-slate-300 rounded-xl p-2 text-sm">
+                <select id="topic-category" class="hidden min-w-0 flex-1 border border-slate-300 rounded-xl p-2 text-sm bg-white"></select>
+            </div>
             <div class="grid grid-cols-4 gap-2">
                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 rounded-xl">Search</button>
                 <button type="button" id="saved-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Saved</button>
@@ -148,6 +258,23 @@
         <img id="modal-image" src="" alt="Zoomed photograph" class="max-w-full max-h-full rounded-lg object-contain">
     </div>
 
-    <script type="module" src="js/visitor.js"></script>
+    <div id="export-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="export-title">
+            <div class="flex justify-between items-center">
+                <h3 id="export-title" class="text-lg font-bold text-slate-900">Export this listing</h3>
+                <button type="button" id="export-close" class="text-slate-400 hover:text-slate-600 font-bold" aria-label="Close">✕</button>
+            </div>
+            <p id="export-place" class="text-sm font-medium text-slate-800"></p>
+            <input id="export-url" type="text" readonly class="w-full border border-slate-300 rounded-xl p-2 text-xs bg-slate-50">
+            <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="export-share" class="bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium text-sm">Share</button>
+                <button type="button" id="export-copy" class="bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Copy link</button>
+                <a id="export-messages" class="flex items-center justify-center bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Messages</a>
+                <a id="export-mail" class="flex items-center justify-center bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Email</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/visitor.js?v=nophoto4"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import {
   decadeLabel,
   findOrganisation,
   isListed,
+  listingGroup,
   nextPhotoCode,
   parsePhotoCode,
   searchSites,
@@ -26,6 +27,8 @@ test("sample sponsors on 10 October 2026", () => {
     "geelong-historical-society": "active",
     "south-barwon-historical-society": "grace",
     "barwon-waterfront-trust": "lapsed",
+    "little-malop-books": "active",
+    "pakington-kitchen": "active",
   });
 });
 
@@ -38,6 +41,8 @@ test("archived sponsors leave the public list and stay on their address", () => 
     "rippleside-bathing-pavilion",
     "ormond-salt-store",
     "belmont-horse-tram-shed",
+    "little-malop-books",
+    "pakington-kitchen",
   ]);
   const kiosk = sites.find((site) => site.id === "western-beach-kiosk");
   assert.equal(isListed(kiosk, findOrganisation(organisations, kiosk.organisationId), now), false);
@@ -51,6 +56,33 @@ test("search uses suburb, decade, and map area", () => {
   assert.deepEqual(names("mapArea", "Waterfront"), ["Rippleside Bathing Pavilion"]);
   assert.deepEqual(names("category", "Transport"), ["Newtown Signalman's Cottage", "Belmont Horse Tram Shed"]);
   assert.equal(decadeLabel(sites.find((site) => site.id === "ormond-salt-store")), "1850s");
+});
+
+test("place and topic search can be combined", () => {
+  const names = searchSites(sites, organisations, {
+    placeField: "suburb",
+    placeQuery: "Belmont",
+    topicField: "text",
+    topicQuery: "tram",
+  }, now).map((site) => site.name);
+  assert.deepEqual(names, ["Belmont Horse Tram Shed"]);
+  const empty = searchSites(sites, organisations, {
+    placeField: "city",
+    placeQuery: "Geelong",
+    topicField: "decade",
+    topicQuery: "1990s",
+  }, now);
+  assert.equal(empty.length, 0);
+});
+
+test("public groups split historic sites from shops and restaurants", () => {
+  const ids = (group) => searchSites(sites, organisations, { group, field: "text", query: "" }, now).map((site) => site.id);
+  assert.equal(ids("sites").includes("moorabool-wool-exchange"), true);
+  assert.equal(ids("sites").includes("little-malop-books"), false);
+  assert.deepEqual(ids("shops"), ["little-malop-books"]);
+  assert.deepEqual(ids("restaurants"), ["pakington-kitchen"]);
+  const books = sites.find((site) => site.id === "little-malop-books");
+  assert.equal(listingGroup(books, findOrganisation(organisations, books.organisationId)), "shops");
 });
 
 test("every photograph is sponsor number, hyphen, reference, and the file exists", () => {
@@ -72,7 +104,8 @@ test("every photograph is sponsor number, hyphen, reference, and the file exists
   }
   const ordered = [...seen].sort(comparePhotoCodes);
   assert.deepEqual(ordered.slice(0, 3), ["1-001", "1-002", "1-003"]);
-  assert.equal(ordered.at(-1), "4-008");
+  assert.equal(ordered.at(-1), "6-002");
   assert.equal(nextPhotoCode(1, ordered), "1-009");
   assert.equal(nextPhotoCode(2, ordered), "2-009");
+  assert.equal(nextPhotoCode(5, ordered), "5-003");
 });

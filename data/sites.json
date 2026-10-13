@@ -1,5 +1,5 @@
 [
-  {
+    {
     "id": "moorabool-wool-exchange",
     "organisationId": "city-of-greater-geelong",
     "name": "Moorabool Wool Exchange",
@@ -237,6 +237,58 @@
       {"code": "4-006", "url": "images/4-006.jpg", "caption": "Clerks' tables", "credit": "Demonstration photograph", "kind": "current"},
       {"code": "4-007", "url": "images/4-007.jpg", "caption": "Shelves", "credit": "Demonstration photograph", "kind": "current"},
       {"code": "4-008", "url": "images/4-008.jpg", "caption": "The office front as it stood in the 1930s.", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "little-malop-books",
+    "organisationId": "little-malop-books",
+    "name": "Little Malop Books",
+    "buildYear": "2014",
+    "yearStart": 2014,
+    "yearEnd": 2014,
+    "circa": false,
+    "category": "Shops",
+    "shopGroup": "shops",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Geelong",
+    "mapArea": "",
+    "mapsQuery": "Little Malop Street, Geelong, Victoria, Australia",
+    "description": "A small independent bookshop on Little Malop Street, with a front table of local history, walking guides, and new fiction. The narrow room runs back to a quiet reading nook, and the window still carries handwritten cards for book-club nights. Visitors often start with the Geelong shelf, then ask for something to take to Eastern Park.",
+    "facts": [],
+    "furtherReading": "https://example.com/little-malop-books",
+    "sources": [],
+    "createdAt": "2026-04-01",
+    "photos": [
+      {"code": "5-001", "url": "images/5-001.jpg", "caption": "Inside the shop", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "5-002", "url": "images/5-002.jpg", "caption": "Shop front on Little Malop Street", "credit": "Demonstration photograph", "kind": "historical"}
+    ]
+  },
+  {
+    "id": "pakington-kitchen",
+    "organisationId": "pakington-kitchen",
+    "name": "Pakington Kitchen",
+    "buildYear": "2018",
+    "yearStart": 2018,
+    "yearEnd": 2018,
+    "circa": false,
+    "category": "Restaurants",
+    "shopGroup": "restaurants",
+    "country": "Australia",
+    "state": "Victoria",
+    "city": "Geelong",
+    "suburb": "Geelong West",
+    "mapArea": "",
+    "mapsQuery": "Pakington Street, Geelong West, Victoria, Australia",
+    "description": "A neighbourhood kitchen on Pakington Street serving lunch and early dinner from a short chalkboard menu. The front window opens onto the footpath, and the room is set with small tables and a counter for takeaway. Regulars come for the daily soup and a seat looking back toward the shops.",
+    "facts": [],
+    "furtherReading": "https://example.com/pakington-kitchen",
+    "sources": [],
+    "createdAt": "2026-04-01",
+    "photos": [
+      {"code": "6-001", "url": "images/6-001.jpg", "caption": "Dining room", "credit": "Demonstration photograph", "kind": "current"},
+      {"code": "6-002", "url": "images/6-002.jpg", "caption": "Shop front on Pakington Street", "credit": "Demonstration photograph", "kind": "historical"}
     ]
   }
 ]

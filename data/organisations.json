@@ -4,6 +4,7 @@
     "id": "city-of-greater-geelong",
     "name": "City of Greater Geelong",
     "type": "Council",
+    "kind": "site",
     "email": "heritage@greatergeelong.example",
     "subscribedAt": "2026-03-01",
     "createdAt": "2026-03-01"
@@ -13,6 +14,7 @@
     "id": "geelong-historical-society",
     "name": "Geelong Historical Society",
     "type": "Society",
+    "kind": "site",
     "email": "secretary@geelonghistory.example",
     "subscribedAt": "2026-06-01",
     "createdAt": "2026-06-01"
@@ -22,6 +24,7 @@
     "id": "south-barwon-historical-society",
     "name": "South Barwon Historical Society",
     "type": "Society",
+    "kind": "site",
     "email": "records@southbarwonhistory.example",
     "subscribedAt": "2025-10-01",
     "createdAt": "2025-10-01"
@@ -31,8 +34,31 @@
     "id": "barwon-waterfront-trust",
     "name": "Barwon Waterfront Trust",
     "type": "Trust",
+    "kind": "site",
     "email": "chair@barwonwaterfront.example",
     "subscribedAt": "2025-08-01",
     "createdAt": "2025-08-01"
+  },
+  {
+    "number": 5,
+    "id": "little-malop-books",
+    "name": "Little Malop Books",
+    "type": "Shop",
+    "kind": "shop",
+    "shopGroup": "shops",
+    "email": "",
+    "subscribedAt": "2026-04-01",
+    "createdAt": "2026-04-01"
+  },
+  {
+    "number": 6,
+    "id": "pakington-kitchen",
+    "name": "Pakington Kitchen",
+    "type": "Restaurant",
+    "kind": "shop",
+    "shopGroup": "restaurants",
+    "email": "",
+    "subscribedAt": "2026-04-01",
+    "createdAt": "2026-04-01"
   }
 ]

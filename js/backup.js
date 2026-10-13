@@ -74,6 +74,8 @@ export function applyRestore({ currentOrganisations, currentSites, backup, user 
         ...current,
         name: incomingOrg?.name || current.name,
         email: incomingOrg?.email || current.email,
+        contactName: incomingOrg?.contactName ?? current.contactName ?? "",
+        contactEmail: incomingOrg?.contactEmail ?? current.contactEmail ?? "",
         type: incomingOrg?.type || current.type,
         subscribedAt: incomingOrg?.subscribedAt || current.subscribedAt,
         createdAt: incomingOrg?.createdAt || current.createdAt,
