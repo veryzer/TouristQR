@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HPTSX3NLZY"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-HPTSX3NLZY');
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1e3a8a">
+    <title>TouristQR signup</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        .hidden { display: none !important; }
+        header {
+            background: #1e3a8a;
+            color: #fff;
+            padding: 0.45rem 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        header h1 { font-size: 1rem; margin: 0; font-weight: 700; }
+        header a, header button {
+            color: #fff;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,.4);
+            border-radius: 0.6rem;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.75rem;
+            text-decoration: none;
+        }
+        form {
+            max-width: 28rem;
+            margin: 0 auto;
+            padding: 0.7rem 0.75rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+        .types {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.35rem;
+        }
+        .types button {
+            border: 2px solid #2563eb;
+            background: #fff;
+            color: #1e3a8a;
+            border-radius: 0.7rem;
+            padding: 0.55rem 0.2rem;
+            font-weight: 700;
+            font-size: 0.82rem;
+        }
+        .types button[aria-pressed="true"] {
+            background: #1e3a8a;
+            color: #fff;
+            border-color: #1e3a8a;
+        }
+        label { display: block; font-size: 0.7rem; font-weight: 700; color: #334155; margin-bottom: 0.15rem; }
+        input, textarea, select {
+            width: 100%;
+            background: #dbeafe;
+            border: 2px solid #2563eb;
+            border-radius: 0.7rem;
+            padding: 0.55rem 0.6rem;
+            font-size: 1rem;
+            color: #0f172a;
+        }
+        textarea { min-height: 4.2rem; resize: vertical; }
+        .row { display: flex; gap: 0.4rem; }
+        .photos { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+        .photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 0.5rem; background: #cbd5e1; }
+        .scan {
+            background: #fff;
+            border: 2px dashed #2563eb;
+            border-radius: 0.8rem;
+            padding: 0.6rem;
+        }
+        .scan p { margin: 0 0 0.4rem; font-size: 0.8rem; color: #334155; }
+        #reader { overflow: hidden; border-radius: 0.6rem; }
+        .actions { display: flex; gap: 0.4rem; }
+        .actions button, .add-photo, #save {
+            flex: 1;
+            border: 0;
+            border-radius: 0.75rem;
+            padding: 0.7rem;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+        .add-photo, .ghost { background: #fff; color: #1e3a8a; border: 2px solid #2563eb; }
+        #save { background: #1e3a8a; color: #fff; width: 100%; }
+        #status {
+            font-size: 0.8rem;
+            border-radius: 0.7rem;
+            padding: 0.5rem 0.65rem;
+            border: 1px solid #cbd5e1;
+        }
+        #status.ok { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+        #status.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        #status.info { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sign up</h1>
+        <a href="admin.html">Console</a>
+    </header>
+    <form id="signup-form" autocomplete="off">
+        <p id="status" class="hidden" role="alert"></p>
+        <div class="types" role="group" aria-label="Listing type">
+            <button type="button" id="type-site" aria-pressed="true">Site</button>
+            <button type="button" id="type-shop" aria-pressed="false">Shop</button>
+            <button type="button" id="type-restaurant" aria-pressed="false">Restaurant</button>
+        </div>
+        <div>
+            <label for="business-name">Business name</label>
+            <input id="business-name" name="business-name" required autocomplete="organization">
+        </div>
+        <div>
+            <label for="contact-name">Contact name</label>
+            <input id="contact-name" name="contact-name" required autocomplete="name">
+        </div>
+        <div>
+            <label for="contact-email">Contact email</label>
+            <input id="contact-email" name="contact-email" type="email" required autocomplete="email">
+        </div>
+        <div>
+            <label for="login-name">Login name</label>
+            <input id="login-name" name="login-name" required autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div>
+            <label for="login-password">Login password</label>
+            <input id="login-password" name="login-password" type="password" required minlength="8" autocomplete="new-password">
+        </div>
+        <div id="public-email-wrap">
+            <label for="public-email">Public email</label>
+            <input id="public-email" name="public-email" type="email" autocomplete="off">
+        </div>
+        <div>
+            <label for="description">Description (optional)</label>
+            <textarea id="description" name="description"></textarea>
+        </div>
+        <div>
+            <label for="website">Website (optional)</label>
+            <input id="website" name="website" type="text" inputmode="url" autocomplete="url" placeholder="example.com or https://…">
+        </div>
+        <div>
+            <label>Photographs (optional, up to 20)</label>
+            <div id="photo-list" class="photos"></div>
+            <button type="button" class="add-photo" id="add-photo">Add photos</button>
+            <input id="photo-files" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" multiple class="hidden">
+        </div>
+        <div class="scan">
+            <p id="qr-status">Scan a printed Generic QR, or skip and we will email one.</p>
+            <div class="actions">
+                <button type="button" class="ghost" id="scan-qr">Scan QR</button>
+                <button type="button" class="ghost hidden" id="stop-scan">Stop</button>
+            </div>
+            <div id="reader" class="hidden"></div>
+        </div>
+        <div>
+            <label for="referred-by">Referred by (optional)</label>
+            <input id="referred-by" name="referred-by" placeholder="Their login name or Generic code" autocomplete="off">
+        </div>
+        <button type="submit" id="save">Save and send welcome</button>
+    </form>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" async></script>
+    <script type="module" src="js/signup.js?v=admin19"></script>
+</body>
+</html>

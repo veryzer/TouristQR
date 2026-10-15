@@ -1,4 +1,4 @@
-import { isListed, subscriptionState } from "./model.js";
+import { extraMonthsOf, isListed, subscriptionState } from "./model.js";
 
 export function sitesForOrganisation(sites, organisationId) {
   return (sites || []).filter((site) => site.organisationId === organisationId);
@@ -76,6 +76,9 @@ export function applyRestore({ currentOrganisations, currentSites, backup, user 
         email: incomingOrg?.email || current.email,
         contactName: incomingOrg?.contactName ?? current.contactName ?? "",
         contactEmail: incomingOrg?.contactEmail ?? current.contactEmail ?? "",
+        extraMonths: incomingOrg?.extraMonths ?? current.extraMonths ?? 0,
+        referredBy: incomingOrg?.referredBy ?? current.referredBy ?? "",
+        referralCode: incomingOrg?.referralCode ?? current.referralCode ?? "",
         type: incomingOrg?.type || current.type,
         subscribedAt: incomingOrg?.subscribedAt || current.subscribedAt,
         createdAt: incomingOrg?.createdAt || current.createdAt,
@@ -97,7 +100,7 @@ export function applyRestore({ currentOrganisations, currentSites, backup, user 
 export function subscriptionReport(organisations, sites, now = new Date()) {
   return organisations.map((org) => {
     const orgSites = sitesForOrganisation(sites, org.id);
-    const state = subscriptionState(org.subscribedAt, now);
+    const state = subscriptionState(org.subscribedAt, now, extraMonthsOf(org));
     return {
       organisationId: org.id,
       number: org.number,

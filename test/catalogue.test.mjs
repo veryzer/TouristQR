@@ -58,6 +58,20 @@ test("search uses suburb, decade, and map area", () => {
   assert.equal(decadeLabel(sites.find((site) => site.id === "ormond-salt-store")), "1850s");
 });
 
+test("search matches site shop and restaurant names", () => {
+  const byName = searchSites(sites, organisations, { field: "name", query: "malop" }, now).map((site) => site.id);
+  assert.deepEqual(byName, ["little-malop-books"]);
+  const placeCity = searchSites(sites, organisations, {
+    placeField: "city",
+    placeQuery: "pakington kitchen",
+    topicField: "text",
+    topicQuery: "",
+  }, now).map((site) => site.id);
+  assert.deepEqual(placeCity, ["pakington-kitchen"]);
+  const topicText = searchSites(sites, organisations, { field: "text", query: "rippleside" }, now).map((site) => site.name);
+  assert.ok(topicText.includes("Rippleside Bathing Pavilion"));
+});
+
 test("place and topic search can be combined", () => {
   const names = searchSites(sites, organisations, {
     placeField: "suburb",
@@ -81,8 +95,17 @@ test("public groups split historic sites from shops and restaurants", () => {
   assert.equal(ids("sites").includes("little-malop-books"), false);
   assert.deepEqual(ids("shops"), ["little-malop-books"]);
   assert.deepEqual(ids("restaurants"), ["pakington-kitchen"]);
+  assert.deepEqual(ids("exhibits"), []);
   const books = sites.find((site) => site.id === "little-malop-books");
   assert.equal(listingGroup(books, findOrganisation(organisations, books.organisationId)), "shops");
+});
+
+test("exhibit listings belong to the exhibits group", () => {
+  const org = { id: "museum", kind: "exhibit", subscribedAt: "2026-01-01" };
+  const site = { id: "steam-traction-engine", organisationId: "museum", name: "Steam engine", createdAt: "2026-01-01", photos: [] };
+  assert.equal(listingGroup(site, org), "exhibits");
+  const listed = searchSites([site], [org], { group: "exhibits", field: "text", query: "" }, now);
+  assert.deepEqual(listed.map((row) => row.id), ["steam-traction-engine"]);
 });
 
 test("every photograph is sponsor number, hyphen, reference, and the file exists", () => {

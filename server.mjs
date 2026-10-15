@@ -23,10 +23,14 @@ import {
   collectPhotoCodes,
   comparePhotoCodes,
   findOrganisation,
+  genericLabelsForSponsor,
+  nextGenericCode,
   nextPhotoCode,
+  parseGenericCode,
   parsePhotoCode,
   formatPhotoCode,
 } from "./js/model.js";
+import { buildSignupRecords } from "./js/signup-records.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const port = Number(process.env.PORT) || 4173;
@@ -42,6 +46,7 @@ const types = {
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".webp": "image/webp",
+  ".gif": "image/gif",
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
 };
@@ -56,6 +61,51 @@ function readJson(name) {
 
 function writeJson(name, value) {
   fs.writeFileSync(dataFile(name), `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function detectImageUpload(buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return { ext: "jpg", mime: "image/jpeg" };
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return { ext: "png", mime: "image/png" };
+  }
+  const head = buffer.subarray(0, 6).toString("ascii");
+  if (head === "GIF87a" || head === "GIF89a") return { ext: "gif", mime: "image/gif" };
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+    return { ext: "webp", mime: "image/webp" };
+  }
+  return null;
+}
+
+function imageBufferFromPayload(raw) {
+  const text = String(raw || "").trim();
+  const match = /^data:image\/(\w+);base64,(.+)$/i.exec(text);
+  const b64 = match ? match[2] : (/^data:/i.test(text) ? "" : text.replace(/\s/g, ""));
+  if (!b64) {
+    throw Object.assign(new Error("Use JPEG, PNG, GIF, or WebP."), { status: 400 });
+  }
+  const buffer = Buffer.from(b64, "base64");
+  if (buffer.length > 1_600_000) {
+    throw Object.assign(new Error("A photograph is too large."), { status: 400 });
+  }
+  const detected = detectImageUpload(buffer);
+  if (!detected) {
+    throw Object.assign(new Error("Use JPEG, PNG, GIF, or WebP."), { status: 400 });
+  }
+  return { buffer, ext: detected.ext };
+}
+
+function pngBuffer(raw) {
+  const text = String(raw || "").trim();
+  const match = /^data:image\/png;base64,(.+)$/i.exec(text);
+  if (!match) return null;
+  const buffer = Buffer.from(match[1], "base64");
+  if (buffer.length < 8 || buffer[0] !== 0x89 || buffer[1] !== 0x50) return null;
+  if (buffer.length > 400_000) return null;
+  return buffer;
+}
+
+function sendSignupMail() {
+  return { sent: false, note: "Welcome email sends on the live TouristQR host." };
 }
 
 function cleanCategoryList(list, fallback) {
@@ -81,12 +131,14 @@ function readSettings() {
       sponsorNotice: String(data?.sponsorNotice || "").trim().slice(0, 400),
       heritageCategories: cleanCategoryList(data?.heritageCategories, ["Civic", "Industrial", "Recreation", "Transport"]),
       shopCategories: cleanCategoryList(data?.shopCategories, ["Restaurants", "Shops"]),
+      exhibitCategories: cleanCategoryList(data?.exhibitCategories, ["Collectibles", "Industrial", "Transport", "Uncategorised"]),
     };
   } catch {
     return {
       sponsorNotice: "",
       heritageCategories: ["Civic", "Industrial", "Recreation", "Transport"],
       shopCategories: ["Restaurants", "Shops"],
+      exhibitCategories: ["Collectibles", "Industrial", "Transport", "Uncategorised"],
     };
   }
 }
@@ -97,15 +149,21 @@ function writeSettings(value) {
     sponsorNotice: value?.sponsorNotice == null ? current.sponsorNotice : String(value.sponsorNotice || "").trim().slice(0, 400),
     heritageCategories: value?.heritageCategories ? cleanCategoryList(value.heritageCategories, current.heritageCategories) : current.heritageCategories,
     shopCategories: value?.shopCategories ? cleanCategoryList(value.shopCategories, current.shopCategories) : current.shopCategories,
+    exhibitCategories: value?.exhibitCategories ? cleanCategoryList(value.exhibitCategories, current.exhibitCategories) : current.exhibitCategories,
   };
   writeJson("settings.json", settings);
-  writeJson("categories.json", { heritage: settings.heritageCategories, shop: settings.shopCategories });
+  writeJson("categories.json", {
+    heritage: settings.heritageCategories,
+    shop: settings.shopCategories,
+    exhibit: settings.exhibitCategories,
+  });
   return settings;
 }
 
 function organisationKindValue(value, fallback = "site") {
-  if (value === "shop" || value === "site") return value;
-  return fallback === "shop" ? "shop" : "site";
+  if (value === "shop" || value === "site" || value === "exhibit") return value;
+  if (fallback === "shop" || fallback === "exhibit") return fallback;
+  return "site";
 }
 
 function shopGroupValue(kind, value, fallback = "shops") {
@@ -120,11 +178,119 @@ function logActivity(entry) {
   writeJson("activity.json", current);
 }
 
+function slugifyOrgId(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+}
+
+function orgLogoStem(org) {
+  const slug = slugifyOrgId(org?.id) || `sponsor-${org?.number || 0}`;
+  return `${slug}-club-logo`;
+}
+
+function deleteOrgLogoFiles(org) {
+  const dir = path.join(root, "images");
+  if (!fs.existsSync(dir)) return;
+  const stem = orgLogoStem(org);
+  for (const ext of ["jpg", "jpeg", "png", "webp", "gif"]) {
+    const file = path.join(dir, `${stem}.${ext}`);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+  const n = Number(org?.number);
+  if (Number.isInteger(n) && n > 0) {
+    for (const ext of ["jpg", "jpeg", "png", "webp", "gif"]) {
+      const legacy = path.join(dir, `logo-${n}.${ext}`);
+      if (fs.existsSync(legacy)) fs.unlinkSync(legacy);
+    }
+  }
+  const url = String(org?.logoUrl || "").split("?")[0];
+  if (url.startsWith("images/")) {
+    const file = path.join(dir, path.basename(url));
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+}
+
+function deletePhotoFilesForSponsorNumber(sponsorNumber) {
+  const n = Number(sponsorNumber);
+  if (!Number.isInteger(n) || n < 1) return;
+  const imageDir = path.join(root, "images");
+  if (!fs.existsSync(imageDir)) return;
+  const prefix = `${n}-`;
+  for (const name of fs.readdirSync(imageDir)) {
+    if (!name.toLowerCase().startsWith(prefix)) continue;
+    const code = name.replace(/\.(jpe?g|png|gif|webp)$/i, "");
+    if (!parsePhotoCode(code)) continue;
+    try {
+      fs.unlinkSync(path.join(imageDir, name));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function stampPhotoMediaVersion(code, url) {
+  const version = Date.now();
+  const sites = readJson("sites.json");
+  let changed = false;
+  for (let i = 0; i < sites.length; i += 1) {
+    let siteChanged = false;
+    const photos = sites[i].photos || [];
+    for (let j = 0; j < photos.length; j += 1) {
+      if (photos[j].code !== code) continue;
+      photos[j].url = url;
+      photos[j].mediaVersion = version;
+      siteChanged = true;
+    }
+    if (siteChanged) {
+      sites[i].photos = photos;
+      sites[i].updatedAt = new Date().toISOString();
+      changed = true;
+    }
+  }
+  if (changed) writeJson("sites.json", sites);
+  return version;
+}
+
+function deletePhotoFilesForSites(sitesToRemove) {
+  const imageDir = path.join(root, "images");
+  const exts = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+  for (const site of sitesToRemove) {
+    for (const photo of site.photos || []) {
+      const code = String(photo.code || "").trim();
+      if (!code) continue;
+      const url = String(photo.url || "");
+      if (url.startsWith("data:")) continue;
+      const relative = url.replace(/^images\//i, "");
+      if (relative) {
+        const filePath = path.join(imageDir, ...relative.split("/"));
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch {
+            /* ignore */
+          }
+          continue;
+        }
+      }
+      for (const ext of exts) {
+        const alt = path.join(imageDir, `${code}${ext}`);
+        if (fs.existsSync(alt)) {
+          try {
+            fs.unlinkSync(alt);
+          } catch {
+            /* ignore */
+          }
+          break;
+        }
+      }
+    }
+  }
+}
+
 function codesOnDisk() {
   const dir = path.join(root, "images");
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
-    .map((name) => name.replace(/\.jpe?g$/i, ""))
+    .map((name) => name.replace(/\.(jpe?g|png|gif|webp)$/i, ""))
     .filter((code) => parsePhotoCode(code));
 }
 
@@ -174,17 +340,28 @@ function normaliseSite(site, organisations) {
       throw error;
     }
     const code = formatPhotoCode(parsed.sponsorNumber, parsed.reference);
-    const url = String(photo.url || "").startsWith("data:")
-      ? photo.url
-      : `images/${code}.jpg`;
-    return {
+    const rawUrl = String(photo.url || "").trim();
+    let url = rawUrl;
+    if (rawUrl.startsWith("data:")) {
+      url = rawUrl;
+    } else {
+      const pathPart = rawUrl.replace(/^images\//i, "").split("?")[0];
+      const extMatch = pathPart.match(/\.(jpe?g|png|gif|webp)$/i);
+      const ext = extMatch ? extMatch[0].replace(/^\./, "") : "jpg";
+      url = `images/${code}.${ext === "jpeg" ? "jpg" : ext}`;
+    }
+    const row = {
       code,
       url,
       caption: String(photo.caption || "").trim(),
       credit: String(photo.credit || "Demonstration photograph").trim(),
       kind: photo.kind === "historical" ? "historical" : "current",
     };
+    const mediaVersion = Number(photo.mediaVersion);
+    if (Number.isFinite(mediaVersion) && mediaVersion > 0) row.mediaVersion = mediaVersion;
+    return row;
   });
+  const updatedAt = String(site.updatedAt || "").trim();
   return {
     id,
     organisationId: org.id,
@@ -203,11 +380,17 @@ function normaliseSite(site, organisations) {
     suburb: String(site.suburb || "").trim(),
     mapArea: String(site.mapArea || "").trim(),
     mapsQuery: String(site.mapsQuery || "").trim(),
+    phone: String(site.phone || "").trim().slice(0, 40),
+    contactPerson: String(site.contactPerson || "").trim(),
+    contactEmail: String(site.contactEmail || "").trim(),
+    owner: String(site.owner || "").trim(),
+    registrationNumber: String(site.registrationNumber || "").trim(),
     description: String(site.description || "").trim(),
     facts: asLines(site.facts),
     furtherReading: String(site.furtherReading || "").trim(),
     sources: asLines(site.sources),
     createdAt,
+    ...(updatedAt ? { updatedAt } : {}),
     photos,
   };
 }
@@ -339,7 +522,8 @@ function collectBackupPhotos(sites) {
         photos.push({ code: photo.code, dataUrl: photo.url });
         continue;
       }
-      const file = path.join(root, "images", `${photo.code}.jpg`);
+      const relative = String(photo.url || "").replace(/^images\//i, "");
+      const file = path.join(root, "images", relative || `${photo.code}.jpg`);
       if (fs.existsSync(file)) {
         photos.push({ code: photo.code, jpeg: fs.readFileSync(file).toString("base64") });
       }
@@ -692,7 +876,8 @@ const server = http.createServer(async (req, res) => {
         const next = current.map((org) => {
           if (org.id !== orgId) return org;
           const shopGroup = shopGroupValue(kind, edited?.shopGroup, org.shopGroup);
-          return { ...org, email, contactName, contactEmail, name, ...(kind === "shop" ? { shopGroup } : {}) };
+          const website = String(edited?.website ?? org.website ?? "").trim().slice(0, 200);
+          return { ...org, email, contactName, contactEmail, name, website, ...(kind === "shop" ? { shopGroup } : {}) };
         });
         writeJson("organisations.json", next);
         logActivity({ action: "save-organisations", by: user.username });
@@ -709,7 +894,8 @@ const server = http.createServer(async (req, res) => {
         const name = String(edited.name || org.name).trim() || org.name;
         const subscribedAt = /^\d{4}-\d{2}-\d{2}$/.test(edited.subscribedAt) ? edited.subscribedAt : org.subscribedAt;
         const shopGroup = shopGroupValue(kind, edited.shopGroup, org.shopGroup);
-        return { ...org, email, contactName, contactEmail, name, subscribedAt, kind, ...(kind === "shop" ? { shopGroup } : { shopGroup: undefined }) };
+        const website = String(edited.website ?? org.website ?? "").trim().slice(0, 200);
+        return { ...org, email, contactName, contactEmail, name, website, subscribedAt, kind, ...(kind === "shop" ? { shopGroup } : { shopGroup: undefined }) };
       });
       for (const item of incoming) {
         if (next.some((org) => org.id === item.id)) continue;
@@ -731,7 +917,7 @@ const server = http.createServer(async (req, res) => {
           number: sponsorNumber,
           id,
           name,
-          type: String(item.type || (kind === "shop" ? "Shop" : "Organisation")),
+          type: String(item.type || (kind === "shop" ? "Shop" : kind === "exhibit" ? "Exhibit" : "Organisation")),
           kind,
           ...(kind === "shop" ? { shopGroup } : {}),
           email,
@@ -752,25 +938,95 @@ const server = http.createServer(async (req, res) => {
       if (!admin) return;
       const body = JSON.parse((await readBody(req, 20_000)).toString("utf8"));
       const organisationId = String(body.organisationId || "").trim();
-      const deleteListings = body.deleteListings !== false && body.deleteListings !== "false";
       const organisations = readJson("organisations.json");
-      if (!findOrganisation(organisations, organisationId)) {
+      const org = findOrganisation(organisations, organisationId);
+      if (!org) {
         sendJson(res, 400, { error: "Choose a sponsor to delete." });
         return;
       }
-      const nextOrgs = organisations.filter((org) => org.id !== organisationId);
       const currentSites = readJson("sites.json");
-      const nextSites = deleteListings
-        ? currentSites.filter((site) => site.organisationId !== organisationId)
-        : currentSites;
+      const releasedGenerics = genericLabelsForSponsor(currentSites, organisations, organisationId);
+      const removedSites = currentSites.filter((site) => site.organisationId === organisationId);
+      deletePhotoFilesForSites(removedSites);
+      deletePhotoFilesForSponsorNumber(org.number);
+      deleteOrgLogoFiles(org);
+      const nextOrgs = organisations.filter((item) => item.id !== organisationId);
+      const nextSites = currentSites.filter((site) => site.organisationId !== organisationId);
       const nextUsers = readJson("users.json").filter((item) => !(item.role === "sponsor" && item.organisationId === organisationId));
       writeJson("organisations.json", nextOrgs);
       writeJson("sites.json", nextSites);
       writeJson("users.json", nextUsers);
-      logActivity({ action: "delete-sponsor", organisationId, deleteListings, by: admin.username });
+      logActivity({
+        action: "delete-sponsor",
+        organisationId,
+        deleteListings: true,
+        releasedGenerics,
+        by: admin.username,
+      });
       sendJson(res, 200, {
         organisations: organisationsForActor(nextOrgs, admin),
         sites: sitesForActor(nextSites, admin),
+        releasedGenerics,
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/signup-meta" && req.method === "GET") {
+      const admin = requireAdmin(req, res);
+      if (!admin) return;
+      sendJson(res, 200, {
+        next: nextGenericCode(readJson("sites.json"), readJson("organisations.json")),
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/signup" && req.method === "POST") {
+      const admin = requireAdmin(req, res);
+      if (!admin) return;
+      const body = JSON.parse((await readBody(req, 8_000_000)).toString("utf8"));
+      const built = buildSignupRecords({
+        body,
+        organisations: readJson("organisations.json"),
+        sites: readJson("sites.json"),
+        users: readJson("users.json"),
+      });
+      fs.mkdirSync(path.join(root, "images"), { recursive: true });
+      for (const photo of built.photos) {
+        const { buffer, ext } = imageBufferFromPayload(photo.dataUrl || photo.jpeg);
+        fs.writeFileSync(path.join(root, "images", `${photo.code}.${ext}`), buffer);
+      }
+      const users = readJson("users.json");
+      users.push({
+        username: built.username,
+        role: "sponsor",
+        organisationId: built.organisation.id,
+        ...hashPassword(built.password),
+      });
+      writeJson("organisations.json", built.organisations);
+      writeJson("sites.json", built.sites);
+      writeJson("users.json", users);
+      const qr = parseGenericCode(body.genericCode)?.listingId === built.generic.listingId
+        ? pngBuffer(body.qrPng)
+        : null;
+      const mail = sendSignupMail(built.email, built.contactEmail, qr);
+      logActivity({
+        action: "signup",
+        organisationId: built.organisation.id,
+        listingId: built.site.id,
+        generic: built.generic.label,
+        by: admin.username,
+      });
+      sendJson(res, 200, {
+        organisationId: built.organisation.id,
+        listingId: built.site.id,
+        businessName: built.organisation.name,
+        generic: built.generic,
+        publicUrl: built.publicUrl,
+        previewUrl: `/${built.generic.label}`,
+        contactEmail: built.contactEmail,
+        emailSent: mail.sent,
+        emailNote: mail.note || "",
+        referralNote: built.referralNote || "",
       });
       return;
     }
@@ -805,6 +1061,55 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === "/api/org-logo" && (req.method === "POST" || req.method === "DELETE")) {
+      const user = requireUser(req, res);
+      if (!user) return;
+      const organisations = readJson("organisations.json");
+      const sponsor = Number(url.searchParams.get("sponsor"));
+      const orgIndex = organisations.findIndex((item) => item.number === sponsor);
+      if (orgIndex === -1) {
+        sendJson(res, 400, { error: "Unknown sponsor number." });
+        return;
+      }
+      const org = organisations[orgIndex];
+      if (org.kind !== "exhibit") {
+        sendJson(res, 400, { error: "Club logos are only for exhibit sponsors." });
+        return;
+      }
+      if (!isSiteAdmin(user) && org.id !== sponsorOrganisationId(user)) {
+        sendJson(res, 403, { error: "You can only change your own sponsor logo." });
+        return;
+      }
+      const imageDir = path.join(root, "images");
+      if (req.method === "DELETE") {
+        deleteOrgLogoFiles(org);
+        delete organisations[orgIndex].logoUrl;
+        delete organisations[orgIndex].logoVersion;
+        writeJson("organisations.json", organisations);
+        logActivity({ action: "remove-org-logo", sponsor, by: user.username });
+        sendJson(res, 200, { logoUrl: "", logoVersion: null });
+        return;
+      }
+      const buffer = await readBody(req, 800_000);
+      const detected = detectImageUpload(buffer);
+      if (!detected) {
+        sendJson(res, 400, { error: "Use JPEG, PNG, GIF, or WebP." });
+        return;
+      }
+      fs.mkdirSync(imageDir, { recursive: true });
+      deleteOrgLogoFiles(org);
+      const stem = orgLogoStem(org);
+      const relativeUrl = `images/${stem}.${detected.ext}`;
+      fs.writeFileSync(path.join(imageDir, `${stem}.${detected.ext}`), buffer);
+      const logoVersion = Date.now();
+      organisations[orgIndex].logoUrl = relativeUrl;
+      organisations[orgIndex].logoVersion = logoVersion;
+      writeJson("organisations.json", organisations);
+      logActivity({ action: "save-org-logo", sponsor, by: user.username });
+      sendJson(res, 200, { logoUrl: relativeUrl, logoVersion });
+      return;
+    }
+
     if (url.pathname === "/api/media" && req.method === "POST") {
       const user = requireUser(req, res);
       if (!user) return;
@@ -826,14 +1131,17 @@ const server = http.createServer(async (req, res) => {
         ? formatPhotoCode(requested.sponsorNumber, requested.reference)
         : nextPhotoCode(sponsor, existing);
       const buffer = await readBody(req, 1_600_000);
-      if (buffer.length < 3 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
-        sendJson(res, 400, { error: "Save the photograph as a JPEG." });
+      const detected = detectImageUpload(buffer);
+      if (!detected) {
+        sendJson(res, 400, { error: "Use JPEG, PNG, GIF, or WebP." });
         return;
       }
       fs.mkdirSync(path.join(root, "images"), { recursive: true });
-      fs.writeFileSync(path.join(root, "images", `${code}.jpg`), buffer);
-      logActivity({ action: "save-photo", code, sponsor, by: user.username });
-      sendJson(res, 200, { code, url: `images/${code}.jpg` });
+      const relativeUrl = `images/${code}.${detected.ext}`;
+      fs.writeFileSync(path.join(root, "images", `${code}.${detected.ext}`), buffer);
+      const mediaVersion = stampPhotoMediaVersion(code, relativeUrl);
+      logActivity({ action: "save-photo", code, sponsor, mediaVersion, by: user.username });
+      sendJson(res, 200, { code, url: relativeUrl, mediaVersion });
       return;
     }
 
@@ -842,7 +1150,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const filePath = safeFile(url.pathname);
+    const genericPath = /^\/Generic\d+\/?$/i.test(url.pathname);
+    const filePath = genericPath ? safeFile("/index.html") : safeFile(url.pathname);
     if (!filePath) {
       sendJson(res, 400, { error: "Bad path." });
       return;

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "css": "npx tailwindcss@3.4.17 -c tailwind.config.js -i css/input.css -o css/app.css --minify"
   }
 }

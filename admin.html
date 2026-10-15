@@ -12,8 +12,47 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1e3a8a">
     <title>TouristQR - Admin & QR Console</title>
+    <link rel="stylesheet" href="/css/app.css?v=local1">
     <style>
+        .hidden { display: none !important; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            padding: 1rem;
+        }
+        #login-screen { max-width: 28rem; margin: 0 auto; }
+        #login-screen section {
+            background: #fff;
+            padding: 1.25rem;
+            border-radius: 1rem;
+            box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+        }
+        #login-screen h1 { font-size: 1.25rem; margin: 0 0 0.4rem; }
+        #login-screen p { font-size: 0.875rem; color: #475569; }
+        #login-screen label { display: block; font-size: 0.7rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem; }
+        #login-screen input {
+            width: 100%;
+            box-sizing: border-box;
+            background: #dbeafe;
+            border: 2px solid #2563eb;
+            border-radius: 0.75rem;
+            padding: 0.6rem;
+            font-size: 1rem;
+        }
+        #login-screen button[type="submit"] {
+            width: 100%;
+            background: #2563eb;
+            color: #fff;
+            border: 0;
+            border-radius: 0.75rem;
+            padding: 0.7rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
         #app-screen input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
         #app-screen select,
         #app-screen textarea {
@@ -38,15 +77,174 @@
             background-color: #e2e8f0;
             outline: none;
         }
+        #generic-print-sheet {
+            display: none;
+        }
+        #generic-print-preview {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+        .generic-print-card {
+            border: 1px dashed #94a3b8;
+            border-radius: 0.75rem;
+            padding: 0.75rem 0.5rem 0.6rem;
+            text-align: center;
+            background: #fff;
+            color: #0f172a;
+        }
+        .generic-print-card canvas {
+            width: 100%;
+            max-width: 9.9rem;
+            height: auto;
+            image-rendering: crisp-edges;
+        }
+        .generic-print-brand {
+            margin: 0.45rem 0 0;
+            font-weight: 800;
+            font-size: 0.945rem;
+            letter-spacing: 0.01em;
+        }
+        .generic-print-scan {
+            margin: 0.1rem 0 0;
+            font-size: 0.765rem;
+            font-weight: 600;
+        }
+        .generic-print-code {
+            margin: 0.15rem 0 0;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: #334155;
+        }
+        @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+                color: #000;
+            }
+            body * { visibility: hidden; }
+            #generic-print-sheet,
+            #generic-print-sheet * { visibility: visible; }
+            #generic-print-sheet {
+                display: block;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 190mm;
+            }
+            .generic-print-page {
+                width: 190mm;
+                height: 277mm;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: 1fr 1fr 1fr;
+                gap: 6mm;
+                page-break-after: always;
+            }
+            .generic-print-page:last-child { page-break-after: auto; }
+            .generic-print-card {
+                border: 0.3pt dashed #94a3b8;
+                border-radius: 0;
+                padding: 5mm 4mm 4mm;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+            .generic-print-card canvas {
+                width: 61mm;
+                height: 61mm;
+                max-width: none;
+                image-rendering: crisp-edges;
+            }
+            .generic-print-brand {
+                font-size: 14.4pt;
+                font-weight: 800;
+                margin-top: 3.5mm;
+            }
+            .generic-print-scan {
+                font-size: 9.9pt;
+                margin-top: 1mm;
+            }
+            .generic-print-code {
+                font-size: 7.7pt;
+                margin-top: 1.2mm;
+                color: #000;
+            }
+        }
         .help-note {
             font-size: 0.75rem;
             color: #475569;
             margin-top: 0.25rem;
             line-height: 1.4;
         }
+        @media (max-width: 640px) {
+            #app-screen > header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            #app-screen > header .header-actions {
+                flex-shrink: 1;
+                justify-content: flex-start;
+            }
+            .category-actions {
+                flex-wrap: wrap;
+            }
+            .category-actions input {
+                min-width: 0;
+                flex: 1 1 100%;
+            }
+            .category-actions button {
+                flex: 0 0 auto;
+            }
+        }
+        #app-screen > header {
+            background: #f8fafc;
+            border: 2px solid #cbd5e1;
+        }
+        .admin-section-catalogue { background: #eff6ff; border: 2px solid #93c5fd; }
+        .admin-section-add-sponsor { background: #f8fafc; border: 2px solid #94a3b8; }
+        .admin-section-pickers { background: #fffbeb; border: 2px solid #fcd34d; }
+        #sponsor-panel { background: #ecfdf5; border: 2px solid #6ee7b7; }
+        #site-panel > section:first-child { background: #f5f3ff; border: 2px solid #c4b5fd; }
+        #qr-section { background: #fdf2f8; border: 2px solid #f9a8d4; }
+        #notice-composer { background: #fefce8; border: 2px solid #fde047; }
+        #category-editor { background: #fff7ed; border: 2px solid #fdba74; }
+        #backup-all-panel { background: #fef2f2; border: 2px solid #fca5a5; }
+        #generic-qr-panel { background: #ecfeff; border: 2px solid #67e8f9; }
+        #app-screen section.rounded-2xl { box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
+        @keyframes save-glow-red {
+            0%, 100% {
+                background-color: #dc2626;
+                box-shadow: 0 0 0 0 rgb(220 38 38 / 0.75);
+            }
+            50% {
+                background-color: #ef4444;
+                box-shadow: 0 0 16px 4px rgb(239 68 68 / 0.65);
+            }
+        }
+        .save-btn-dirty {
+            animation: save-glow-red 1s ease-in-out infinite;
+            color: #fff !important;
+            border: none !important;
+        }
+        .save-btn-dirty:hover {
+            background-color: #ef4444 !important;
+        }
+        .save-btn-saved {
+            background-color: #16a34a !important;
+            color: #fff !important;
+            border: none !important;
+            animation: none;
+            box-shadow: none;
+        }
+        .save-btn-saved:hover {
+            background-color: #15803d !important;
+        }
     </style>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" async></script>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen p-6">
 
@@ -71,13 +269,14 @@
 
     <div id="app-screen" class="hidden max-w-2xl mx-auto space-y-6">
 
-        <header class="bg-white p-6 rounded-2xl shadow-sm flex justify-between items-center gap-3">
-            <div>
-                <h1 class="text-xl font-bold text-slate-900">TouristQR Management Console</h1>
+        <header class="p-6 rounded-2xl shadow-sm flex justify-between items-center gap-3">
+            <div class="min-w-0">
+                <h1 class="text-xl font-bold text-slate-900 break-words">TouristQR Management Console</h1>
                 <p id="session-label" class="text-xs text-slate-500 mt-1">Photographs are filed as sponsor number, hyphen, reference.</p>
                 <p id="sponsor-notice" class="hidden text-sm text-slate-700 mt-3 whitespace-pre-wrap"></p>
             </div>
-            <div class="flex gap-2 shrink-0">
+            <div class="header-actions flex gap-2 flex-wrap justify-end">
+                <a href="signup.html" class="admin-only text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-medium">Phone signup</a>
                 <button type="button" id="view-live" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-medium border border-blue-200">View live site →</button>
                 <button type="button" id="sign-out" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-xl font-medium border border-slate-300">Sign out</button>
             </div>
@@ -85,17 +284,19 @@
 
         <p id="admin-status" class="text-sm rounded-xl px-3 py-2 border hidden" role="alert" aria-live="polite"></p>
 
-        <section id="top-menu" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-4">
-            <div>
-                <h2 class="font-bold text-slate-900">Catalogue</h2>
-                <p id="catalogue-totals" class="text-sm text-slate-600 mt-1"></p>
-                <div class="flex gap-2 mt-3">
-                    <button type="button" id="work-sites" class="text-xs px-3 py-2 rounded-xl font-medium bg-slate-800 text-white">Sites</button>
-                    <button type="button" id="work-shops" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Shops</button>
-                </div>
+        <section id="catalogue-panel" class="admin-only admin-section-catalogue p-6 rounded-2xl shadow-sm">
+            <h2 class="font-bold text-slate-900">Catalogue</h2>
+            <p id="catalogue-totals" class="text-sm text-slate-600 mt-1"></p>
+            <div class="flex flex-wrap gap-2 mt-3">
+                <button type="button" id="work-sites" class="text-xs px-3 py-2 rounded-xl font-medium bg-slate-800 text-white">Sites</button>
+                <button type="button" id="work-shops" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Shops</button>
+                <button type="button" id="work-exhibits" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Exhibits</button>
             </div>
+        </section>
+
+        <section id="new-sponsor-panel" class="admin-only admin-section-add-sponsor p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 id="add-sponsor-title" class="font-bold text-slate-900">Add site sponsor</h2>
             <form id="new-sponsor" class="space-y-3">
-                <h3 id="add-sponsor-title" class="text-sm font-medium">Add site sponsor</h3>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-sponsor-name">Business name</label>
                     <input id="new-sponsor-name" type="text" required class="w-full border rounded-xl p-2 text-sm">
@@ -130,7 +331,7 @@
             </form>
         </section>
 
-        <section id="sponsor-picker" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-3">
+        <section id="sponsor-picker" class="admin-only admin-section-pickers p-6 rounded-2xl shadow-sm space-y-3">
             <h2 id="sponsors-heading" class="font-bold text-slate-900">Site sponsors</h2>
             <label class="flex items-center gap-2 text-sm text-slate-700">
                 <input id="sort-by-expiry" type="checkbox" class="rounded expiry-sort">
@@ -142,7 +343,19 @@
             </div>
         </section>
 
-        <section id="shop-sponsor-picker" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-3">
+        <section id="exhibit-sponsor-picker" class="admin-only admin-section-pickers p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">Exhibit sponsors</h2>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input id="sort-exhibit-by-expiry" type="checkbox" class="rounded expiry-sort">
+                Sort by expiry (soonest public listing end first)
+            </label>
+            <div>
+                <label for="exhibit-sponsor-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select sponsor</label>
+                <select id="exhibit-sponsor-selector" class="border rounded-xl p-2 text-sm w-full"></select>
+            </div>
+        </section>
+
+        <section id="shop-sponsor-picker" class="admin-only admin-section-pickers p-6 rounded-2xl shadow-sm space-y-3">
             <h2 class="font-bold text-slate-900">Shop sponsors</h2>
             <label class="flex items-center gap-2 text-sm text-slate-700">
                 <input id="sort-shop-by-expiry" type="checkbox" class="rounded expiry-sort">
@@ -154,7 +367,7 @@
             </div>
         </section>
 
-        <section id="sponsor-panel" class="hidden bg-white p-6 rounded-2xl shadow-sm space-y-4">
+        <section id="sponsor-panel" class="hidden p-6 rounded-2xl shadow-sm space-y-4">
             <div class="flex justify-between gap-3 items-start">
                 <h2 id="sponsor-heading" class="font-bold text-slate-900">Sponsor</h2>
                 <span id="sponsor-status-pill" class="text-xs text-slate-500 shrink-0"></span>
@@ -163,17 +376,17 @@
             <form id="sponsor-form" class="space-y-3">
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-name">Business name</label>
-                    <input id="sponsor-name" type="text" class="w-full border rounded-xl p-2 text-sm">
+                    <input id="sponsor-name" type="text" required class="w-full border rounded-xl p-2 text-sm">
                     <p class="help-note">Shown as “Sponsored by …” on the public page. Visitors see this name, not the contact name.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-contact-name">Contact name</label>
-                    <input id="sponsor-contact-name" type="text" autocomplete="name" class="w-full border rounded-xl p-2 text-sm">
+                    <input id="sponsor-contact-name" type="text" autocomplete="name" required class="w-full border rounded-xl p-2 text-sm">
                     <p class="help-note">The person TouristQR should talk to. Visitors do not see this name.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-contact-email">Contact email address</label>
-                    <input id="sponsor-contact-email" type="email" autocomplete="email" class="w-full border rounded-xl p-2 text-sm">
+                    <input id="sponsor-contact-email" type="email" autocomplete="email" required class="w-full border rounded-xl p-2 text-sm">
                     <p class="help-note">Where TouristQR can email the contact person. Visitors do not see this address.</p>
                 </div>
                 <div>
@@ -191,6 +404,29 @@
                     <input id="sponsor-email" type="email" class="w-full border rounded-xl p-2 text-sm">
                     <p class="help-note">Visitors use this from Sponsored by and Contact sponsor on the public page. It can be different from the contact email above.</p>
                 </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-website">Sponsor website (optional)</label>
+                    <input id="sponsor-website" type="text" inputmode="url" autocomplete="url" placeholder="example.com or https://…" class="w-full border rounded-xl p-2 text-sm">
+                    <p class="help-note">When set, “Sponsored by” opens this address in a new browser tab. Use a full address starting with https://</p>
+                </div>
+                <div id="exhibit-sponsor-logo-panel" class="hidden space-y-2 border border-slate-200 rounded-xl p-3">
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Club logo (optional)</p>
+                    <p class="help-note">Shown on public exhibit listings where Navigate usually appears. Pick or paste a picture — it is saved under this sponsor automatically (no filename to enter). JPEG, PNG, GIF, or WebP; resized to a thumbnail on upload.</p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" id="sponsor-logo-preview-btn" class="hidden shrink-0 rounded-xl border border-slate-200 bg-white p-1" title="Click to replace the logo">
+                            <img id="sponsor-logo-preview" alt="" class="w-16 h-16 object-contain">
+                        </button>
+                        <div class="flex flex-wrap gap-2">
+                            <label class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl cursor-pointer">
+                                <span id="sponsor-logo-upload-label">Upload logo</span>
+                                <input id="sponsor-logo-file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" class="hidden">
+                            </label>
+                            <button type="button" id="paste-sponsor-logo" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Paste from clipboard</button>
+                            <button type="button" id="remove-sponsor-logo" class="text-xs bg-white border border-red-200 text-red-800 px-3 py-2 rounded-xl">Remove logo</button>
+                        </div>
+                    </div>
+                    <p id="sponsor-logo-status" class="text-xs text-slate-500"></p>
+                </div>
                 <fieldset class="shop-sponsor-only hidden space-y-2">
                     <legend class="block text-xs font-semibold text-slate-600 mb-1">Public listing button</legend>
                     <label class="flex items-center gap-2 text-sm text-slate-700">
@@ -205,10 +441,11 @@
                 </fieldset>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-started">Subscription start</label>
-                    <input id="sponsor-started" type="date" required class="w-full border rounded-xl p-2 text-sm">
+                    <input id="sponsor-started" type="date" class="w-full border rounded-xl p-2 text-sm">
                     <p class="help-note">The site admin sets this date. Public listing stays open for 12 months, then one grace month.</p>
                 </div>
                 <button type="submit" id="save-sponsor" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Save sponsor</button>
+                <p id="sponsor-save-status" class="text-xs rounded-xl px-3 py-2 border hidden" role="status" aria-live="polite"></p>
             </form>
             <div class="flex flex-wrap gap-2 pt-2 border-t">
                 <button type="button" id="backup-sponsor" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Backup this sponsor</button>
@@ -218,31 +455,33 @@
                 </label>
                 <button type="button" id="delete-sponsor" class="admin-only text-xs bg-white border border-red-300 text-red-800 px-3 py-2 rounded-xl">Delete this sponsor</button>
             </div>
-            <p class="text-xs text-slate-500">Restore this sponsor replaces only this sponsor’s records. Delete this sponsor removes the sponsor and their login, then asks whether to delete their sites or shop as well. Photograph files stay so numbers are not reused.</p>
-            <div id="site-nav-wrap" class="heritage-only pt-2 border-t space-y-3">
-                <div id="site-selector-wrap">
-                    <label for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site</label>
-                    <select id="site-selector" class="border rounded-xl p-2 text-sm w-full"></select>
-                </div>
+            <p class="text-xs text-slate-500">Restore this sponsor replaces only this sponsor’s records. Delete this sponsor removes the sponsor, their login, all their listings, photograph files in images, and frees any Generic QR number they used.</p>
+            <div id="site-nav-wrap" class="place-listing-only pt-2 border-t">
                 <button type="button" id="new-site" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium w-full">+ Next new site</button>
             </div>
         </section>
 
         <section id="site-panel" class="hidden space-y-6">
-            <section class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
+            <section class="p-6 rounded-2xl shadow-sm space-y-4">
                 <h2 id="site-form-title" class="font-bold text-slate-900 border-b pb-2">Add / modify historic site</h2>
                 <p id="site-form-intro" class="help-note shop-only hidden">This is the listing visitors see after they scan the QR code. Edit the shop name, description, address, website, and photographs here, then save.</p>
                 <form id="site-form" class="space-y-4" novalidate>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
+                    <div id="site-selector-wrap" class="place-listing-only">
+                        <label for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site</label>
+                        <select id="site-selector" class="border rounded-xl p-2 text-sm w-full"></select>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="admin-only">
                             <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-id-label" for="siteId">Site ID (permanent)</label>
-                            <input type="text" id="siteId" required placeholder="moorabool-wool-exchange" class="w-full border rounded-xl p-2 text-sm">
+                            <input type="text" id="siteId" placeholder="moorabool-wool-exchange" class="w-full border rounded-xl p-2 text-sm">
                             <p class="help-note shop-only hidden">Used in the public URL and on the QR code. After the shop is registered this ID cannot be changed.</p>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-name-label" for="siteName">Place name</label>
                             <input type="text" id="siteName" required class="w-full border rounded-xl p-2 text-sm">
+                            <p class="help-note heritage-only sponsor-id-note hidden">When you save, the public address is made from this name (lowercase, dashes between words). It cannot be changed later.</p>
                             <p class="help-note shop-only hidden">Shown as the heading on the public page.</p>
+                            <p class="help-note shop-only sponsor-id-note hidden">When you save, the public address is made from the shop name (lowercase, dashes between words). It cannot be changed later.</p>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
@@ -251,8 +490,8 @@
                             <p id="site-sponsor-label" class="text-sm text-slate-800 py-2"></p>
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-year-label" for="siteYear">Build year</label>
-                            <input type="text" id="siteYear" required placeholder="1872" class="w-full border rounded-xl p-2 text-sm">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-year-label" for="siteYear">Build year (optional)</label>
+                            <input type="text" id="siteYear" placeholder="1872" class="w-full border rounded-xl p-2 text-sm">
                             <p class="help-note shop-only hidden">Shown under the shop name as Established.</p>
                         </div>
                     </div>
@@ -282,85 +521,100 @@
                             <p class="help-note">Used in the public City search.</p>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-maps-label" for="siteMaps">Google Maps query</label>
-                        <input type="text" id="siteMaps" required class="w-full border rounded-xl p-2 text-sm">
+                    <div class="place-listing-only">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-maps-label" for="siteMaps">Google Maps query (optional)</label>
+                        <input type="text" id="siteMaps" class="w-full border rounded-xl p-2 text-sm">
                         <p class="help-note shop-only hidden">Used by Navigate on the public page.</p>
+                        <p class="help-note exhibit-only hidden">If you leave this blank, the Navigate button is hidden on the public page.</p>
+                    </div>
+                    <div class="exhibit-only hidden space-y-3 border border-slate-200 rounded-xl p-3">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Exhibit details (optional)</p>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteContactPerson">Contact person</label>
+                            <input type="text" id="siteContactPerson" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteContactEmail">Contact email</label>
+                            <input type="email" id="siteContactEmail" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteOwner">Owner</label>
+                            <input type="text" id="siteOwner" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteRegistration">Registration number</label>
+                            <input type="text" id="siteRegistration" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-desc-label" for="siteDesc">History</label>
-                        <textarea id="siteDesc" rows="5" required class="w-full border rounded-xl p-2 text-sm"></textarea>
+                        <textarea id="siteDesc" rows="5" class="w-full border rounded-xl p-2 text-sm"></textarea>
                         <p class="help-note shop-only hidden">Shown as Description on the public page.</p>
                     </div>
                     <div class="shop-only hidden">
                         <label class="block text-xs font-semibold text-slate-600 mb-1" id="site-reading-label-shop" for="siteReadingShop">Website</label>
-                        <input type="url" id="siteReadingShop" placeholder="https://" class="w-full border rounded-xl p-2 text-sm">
+                        <input type="text" id="siteReadingShop" inputmode="url" autocomplete="url" placeholder="example.com or https://…" class="w-full border rounded-xl p-2 text-sm">
                         <p class="help-note">Shown as a Website link on the public shop page. Use a full address starting with https://</p>
+                    </div>
+                    <div class="shop-only hidden">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1" for="sitePhone">Phone (optional)</label>
+                        <input type="tel" id="sitePhone" placeholder="03 5221 1234" class="w-full border rounded-xl p-2 text-sm">
+                        <p class="help-note">Shown above Scan on the public page as a tap-to-call link on mobile phones.</p>
+                    </div>
+                    <div class="place-listing-only grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCountry">Country</label>
+                            <input type="text" id="siteCountry" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteState">State</label>
+                            <input type="text" id="siteState" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCity">City</label>
+                            <input type="text" id="siteCity" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                    </div>
+                    <div class="heritage-only grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearStart">Year from</label>
+                            <input type="number" id="siteYearStart" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearEnd">Year to</label>
+                            <input type="number" id="siteYearEnd" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCreated">Listing created</label>
+                            <input type="date" id="siteCreated" class="w-full border rounded-xl p-2 text-sm">
+                        </div>
                     </div>
 
                     <div class="space-y-3 pt-2 border-t">
-                        <div class="flex items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
                             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Photographs</h3>
-                            <label class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl cursor-pointer">
-                                Add photograph
-                                <input id="add-photo" type="file" accept="image/*" class="hidden">
-                            </label>
+                            <div class="flex flex-wrap gap-2 justify-end">
+                                <button type="button" id="paste-photo" class="text-xs bg-white border border-slate-300 text-slate-800 px-3 py-2 rounded-xl">Paste image from clipboard</button>
+                                <label class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl cursor-pointer">
+                                    Add photograph
+                                    <input id="add-photo" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" class="hidden">
+                                </label>
+                            </div>
                         </div>
-                        <p class="help-note heritage-only">A new file gets the next reference for that sponsor, such as 1-009.jpg. Replacing a photograph keeps its code. Removed codes are not reused.</p>
-                        <p class="help-note shop-only hidden">Add photographs for the public gallery (up to 20). Mark one as Shop front to show it in that section. Captions appear with the pictures. Replacing a file keeps its code; removed codes are not reused.</p>
+                        <p class="help-note heritage-only">A new photograph gets the next reference for that sponsor, such as 1-009.jpg. JPEG, PNG, GIF, and WebP are accepted. On a PC you can copy a picture (e.g. a screenshot) and use Paste image from clipboard. Replacing a photograph keeps its code. Removed codes are not reused. Captions are optional.</p>
+                        <p class="help-note exhibit-only hidden">Mark one photograph as Advertising photo to show it in that section on the public page. Captions are optional.</p>
+                        <p class="help-note shop-only hidden">Add photographs for the public gallery (up to 20). JPEG, PNG, GIF, and WebP are accepted. On a PC, copy an image and use Paste image from clipboard. Mark one as Shop front to show it in that section. Captions are optional. Replacing a file keeps its code; removed codes are not reused.</p>
+                        <p id="photo-add-status" class="text-xs rounded-xl px-3 py-2 border hidden" aria-live="off"></p>
                         <div id="photo-rows" class="space-y-3"></div>
                     </div>
 
-                    <details id="background-details" class="heritage-only border rounded-xl p-3">
-                        <summary class="text-sm font-medium cursor-pointer">Background details</summary>
-                        <div class="grid grid-cols-3 gap-4 mt-3">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCountry">Country</label>
-                                <input type="text" id="siteCountry" class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteState">State</label>
-                                <input type="text" id="siteState" class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCity">City</label>
-                                <input type="text" id="siteCity" class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-3 gap-4 mt-3">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearStart">Year from</label>
-                                <input type="number" id="siteYearStart" class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearEnd">Year to</label>
-                                <input type="number" id="siteYearEnd" class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCreated">Listing created</label>
-                                <input type="date" id="siteCreated" required class="w-full border rounded-xl p-2 text-sm">
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteFacts">Facts, one per line</label>
-                            <textarea id="siteFacts" rows="3" class="w-full border rounded-xl p-2 text-sm"></textarea>
-                        </div>
-                        <div class="mt-3">
-                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteReading">Longer reading link</label>
-                            <input type="url" id="siteReading" placeholder="https://" class="w-full border rounded-xl p-2 text-sm">
-                        </div>
-                        <div class="mt-3">
-                            <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteSources">Sources, one per line</label>
-                            <textarea id="siteSources" rows="2" class="w-full border rounded-xl p-2 text-sm"></textarea>
-                        </div>
-                    </details>
-
-                    <button type="submit" id="save-site-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm">Save site and generate QR code</button>
+                    <button type="submit" id="save-site-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm">Save site</button>
+                    <p id="site-save-status" class="text-sm rounded-xl px-3 py-2 border hidden" role="status" aria-live="polite"></p>
                     <button type="button" id="delete-site" class="w-full bg-white border border-slate-300 text-slate-700 font-medium py-2.5 rounded-xl text-sm">Delete site</button>
                 </form>
             </section>
 
-            <section id="qr-section" class="bg-white p-6 rounded-2xl shadow-sm space-y-4 text-center">
+            <section id="qr-section" class="p-6 rounded-2xl shadow-sm space-y-4 text-center">
                 <h2 id="qr-section-title" class="font-bold text-slate-900 text-left border-b pb-2">QR code for this site</h2>
                 <div class="flex flex-col items-center space-y-3">
                     <canvas id="qr-canvas" class="w-full max-w-[280px] h-auto bg-white shadow-sm"></canvas>
@@ -371,7 +625,7 @@
             </section>
         </section>
 
-        <section id="notice-composer" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-3">
+        <section id="notice-composer" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
             <h2 class="font-bold text-slate-900">Message to every sponsor</h2>
             <p class="text-xs text-slate-500">This short note appears under Signed in as… after a sponsor signs in.</p>
             <form id="notice-form" class="space-y-2">
@@ -381,25 +635,25 @@
             </form>
         </section>
 
-        <section id="category-editor" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-3">
+        <section id="category-editor" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
             <h2 id="category-editor-title" class="font-bold text-slate-900">Site categories</h2>
             <p class="text-xs text-slate-500">These names appear in the public Category pulldown for historic sites. Renaming updates every site that uses that name. Deleting moves those sites to Uncategorised. Shop and restaurant categories are not edited here.</p>
             <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1" for="category-pick">Category</label>
                 <select id="category-pick" class="w-full border rounded-xl p-2 text-sm bg-white"></select>
             </div>
-            <div class="flex gap-2">
+            <div class="category-actions flex gap-2">
                 <input id="category-rename-name" type="text" maxlength="40" aria-label="Rename category" class="flex-1 border rounded-xl p-2 text-sm">
                 <button type="button" id="rename-category" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Rename</button>
                 <button type="button" id="delete-category" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Delete</button>
             </div>
-            <div class="flex gap-2 pt-2 border-t">
+            <div class="category-actions flex gap-2 pt-2 border-t">
                 <input id="new-category-name" type="text" maxlength="40" placeholder="Add a category" class="flex-1 border rounded-xl p-2 text-sm">
                 <button type="button" id="add-category" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Add</button>
             </div>
         </section>
 
-        <section id="backup-all-panel" class="admin-only bg-white p-6 rounded-2xl shadow-sm space-y-3">
+        <section id="backup-all-panel" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
             <h2 class="font-bold text-slate-900">Backup all</h2>
             <div class="flex flex-wrap gap-2">
                 <button type="button" id="backup-all" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Backup all</button>
@@ -410,7 +664,27 @@
             </div>
             <p class="text-xs text-slate-500">Restore all replaces the whole catalogue. Use it as a crisis restore, not as a merge.</p>
         </section>
+
+        <section id="generic-qr-panel" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">Instant signup QR codes</h2>
+            <p class="help-note">Prints 6 unused Generic codes onto one A4 sheet, 3 rows of 2. Scan one during phone signup to bind it to a new listing.</p>
+            <div class="flex flex-wrap items-end gap-2">
+                <div class="flex-1 min-w-[8rem]">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1" for="generic-start">Start number</label>
+                    <input id="generic-start" type="number" min="1" max="999999" step="1" value="1" class="w-full border rounded-xl p-2 text-sm">
+                </div>
+                <label class="flex items-center gap-2 text-xs text-slate-700 py-2">
+                    <input id="generic-skip-used" type="checkbox" checked>
+                    Skip numbers already used
+                </label>
+                <button type="button" id="generic-make" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Make 6 codes</button>
+                <button type="button" id="generic-print" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Print A4</button>
+            </div>
+            <p id="generic-qr-status" class="help-note"></p>
+            <div id="generic-print-preview"></div>
+            <div id="generic-print-sheet"></div>
+        </section>
     </div>
-    <script type="module" src="js/admin.js?v=admin13"></script>
+    <script type="module" src="js/admin.js?v=admin33"></script>
 </body>
 </html>

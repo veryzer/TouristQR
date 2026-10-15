@@ -1,4 +1,4 @@
-import { assetUrl, sitePublicUrl } from "./config.js?v=ios5";
+import { assetUrl, publicPhotoUrl, sitePublicUrl } from "./config.js?v=generic5";
 import {
   DEFAULT_HERITAGE_CATEGORIES,
   DEFAULT_SHOP_CATEGORIES,
@@ -6,12 +6,14 @@ import {
   findOrganisation,
   isListed,
   listingGroup,
-  mergeById,
+  mergePublicCatalogue,
+  normalizePublicHttpUrl,
   organisationKind,
+  parseGenericCode,
   photosInCodeOrder,
   searchSites,
-} from "./model.js?v=ios5";
-import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js?v=ios5";
+} from "./model.js?v=generic9";
+import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js?v=generic5";
 
 const FAVOURITES = "touristqr_favourites";
 const VISITS = "touristqr_visits";
@@ -19,6 +21,7 @@ const TOUR = "touristqr_tour";
 
 const placeholders = {
   category: "Civic, Recreation, Transport…",
+  name: "Fernery, Little Malop Books…",
   country: "Australia",
   state: "Victoria",
   city: "Geelong",
@@ -40,6 +43,7 @@ const state = {
   pointer: null,
   group: "sites",
   categories: { heritage: DEFAULT_HERITAGE_CATEGORIES, shop: DEFAULT_SHOP_CATEGORIES },
+  catalogRevision: 0,
 };
 
 let html5QrCode = null;
@@ -52,6 +56,8 @@ let historyChunks = [];
 let historyChunkIndex = 0;
 let historyAudioPaused = false;
 let audioTtsFallback = false;
+let historyNativeChunks = [];
+let historyNativeChunkIndex = 0;
 
 function isApplePhone() {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent)
@@ -76,13 +82,37 @@ function useDeviceVoice() {
   return speechSupported() && (!isApplePhone() || isIOSSafari());
 }
 
-function isSafariBrowser() {
-  const ua = navigator.userAgent || "";
-  return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|FxiOS|EdgiOS|Edg\/|OPR\/|OPiOS|DuckDuckGo|Android/i.test(ua);
+function isAndroidMobile() {
+  return !isDesktopBrowser() && /Android/i.test(navigator.userAgent || "");
+}
+
+/** Play/stop only — avoids broken pause/resume on Android Chrome and on streamed iPhone audio. */
+function ttsPlayStopOnly() {
+  if (isAndroidMobile() && useDeviceVoice()) return true;
+  return isApplePhone() && !useDeviceVoice();
+}
+
+function historySpeechActive() {
+  if (historyAudio && !historyAudioPaused) return true;
+  if (historyNativeChunks.length && historyNativeChunkIndex < historyNativeChunks.length) {
+    try {
+      if (window.speechSynthesis?.speaking) return true;
+    } catch {
+      return true;
+    }
+    if (historyUtterance) return true;
+  }
+  try {
+    return Boolean(window.speechSynthesis?.speaking);
+  } catch {
+    return false;
+  }
 }
 
 function speakerVisible() {
-  return isSafariBrowser() && speechSupported();
+  if (!speechSupported()) return false;
+  // Desktop + Android + iOS Safari: Web Speech API. Other iPhone browsers (Chrome, etc.): audio fallback.
+  return useDeviceVoice() || isApplePhone();
 }
 
 function loadSpeechVoices() {
@@ -105,14 +135,25 @@ function preferredVoice() {
 function setSpeakButton(mode) {
   const button = $("history-speak");
   if (!button) return;
+  const simple = ttsPlayStopOnly();
   if (mode === "speaking") {
-    button.textContent = "⏸";
-    button.setAttribute("aria-label", "Pause reading");
-    button.title = "Pause reading";
-  } else if (mode === "paused") {
+    if (simple) {
+      button.textContent = "⏹";
+      button.setAttribute("aria-label", "Stop reading");
+      button.title = "Stop";
+    } else {
+      button.textContent = "⏸";
+      button.setAttribute("aria-label", "Pause reading");
+      button.title = "Pause reading";
+    }
+  } else if (mode === "paused" && !simple) {
     button.textContent = "▶";
     button.setAttribute("aria-label", "Continue reading");
     button.title = "Continue reading";
+  } else if (simple) {
+    button.textContent = "▶";
+    button.setAttribute("aria-label", "Play site history");
+    button.title = "Play";
   } else {
     button.textContent = "🔊";
     button.setAttribute("aria-label", "Read site history");
@@ -165,6 +206,8 @@ function stopHistorySpeech() {
   clearSpeechKeepAlive();
   historyPaused = false;
   historyUtterance = null;
+  historyNativeChunks = [];
+  historyNativeChunkIndex = 0;
   stopHistoryAudio();
   if (speechSupported()) {
     try {
@@ -176,31 +219,54 @@ function stopHistorySpeech() {
   setSpeakButton("idle");
 }
 
-function speakHistory(text) {
-  const synth = window.speechSynthesis;
-  const utterance = new SpeechSynthesisUtterance(text);
+function configureHistoryUtterance(utterance) {
   const voice = preferredVoice();
   if (voice) {
     utterance.voice = voice;
     utterance.lang = voice.lang;
   } else {
-    utterance.lang = "en-US";
+    utterance.lang = "en-AU";
   }
   utterance.rate = 1;
   utterance.pitch = 1;
   utterance.volume = 1;
-  utterance.onend = () => {
-    if (historyUtterance !== utterance) return;
+}
+
+function speakHistory(text) {
+  const chunks = splitSpeechChunks(text);
+  if (!chunks.length) return;
+  historyNativeChunks = chunks;
+  historyNativeChunkIndex = 0;
+  speakHistoryNativeChunk();
+}
+
+function speakHistoryNativeChunk() {
+  const synth = window.speechSynthesis;
+  const text = historyNativeChunks[historyNativeChunkIndex];
+  if (!text) {
     clearSpeechKeepAlive();
     historyUtterance = null;
     historyPaused = false;
+    historyNativeChunks = [];
+    historyNativeChunkIndex = 0;
     setSpeakButton("idle");
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(text);
+  configureHistoryUtterance(utterance);
+  utterance.onend = () => {
+    if (historyUtterance !== utterance) return;
+    historyNativeChunkIndex += 1;
+    if (historyPaused) return;
+    speakHistoryNativeChunk();
   };
   utterance.onerror = () => {
     if (historyUtterance !== utterance) return;
     clearSpeechKeepAlive();
     historyUtterance = null;
     historyPaused = false;
+    historyNativeChunks = [];
+    historyNativeChunkIndex = 0;
     setSpeakButton("idle");
   };
   historyUtterance = utterance;
@@ -278,6 +344,29 @@ function playHistoryChunk() {
   }
 }
 
+const IOS_STREAM_TTS_CONSENT_KEY = "touristqr-ios-stream-tts-consent";
+let pendingStreamTtsText = "";
+
+function usesStreamedTtsOnPhone() {
+  return isApplePhone() && !useDeviceVoice();
+}
+
+function hasIosStreamTtsConsent() {
+  try {
+    return localStorage.getItem(IOS_STREAM_TTS_CONSENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setIosStreamTtsConsent() {
+  try {
+    localStorage.setItem(IOS_STREAM_TTS_CONSENT_KEY, "1");
+  } catch {
+    // Private mode may block storage; playback can still proceed this time.
+  }
+}
+
 function speakHistoryAudio(text) {
   stopHistoryAudio();
   historyChunks = splitSpeechChunks(text);
@@ -288,9 +377,31 @@ function speakHistoryAudio(text) {
   playHistoryChunk();
 }
 
+function startStreamedHistorySpeech(text) {
+  if (usesStreamedTtsOnPhone() && !hasIosStreamTtsConsent()) {
+    pendingStreamTtsText = text;
+    setModal("ios-tts-consent-modal", true);
+    return;
+  }
+  speakHistoryAudio(text);
+}
+
 function toggleHistorySpeech() {
   const text = ($("site-description")?.textContent || "").trim();
   if (!text) return;
+  if (ttsPlayStopOnly()) {
+    if (historySpeechActive()) {
+      stopHistorySpeech();
+      return;
+    }
+    if (!useDeviceVoice()) {
+      startStreamedHistorySpeech(text);
+      return;
+    }
+    loadSpeechVoices();
+    speakHistory(text);
+    return;
+  }
   if (historyAudio && !historyAudioPaused) {
     try {
       historyAudio.pause();
@@ -310,7 +421,7 @@ function toggleHistorySpeech() {
     return;
   }
   if (!useDeviceVoice()) {
-    speakHistoryAudio(text);
+    startStreamedHistorySpeech(text);
     return;
   }
   const synth = window.speechSynthesis;
@@ -341,6 +452,17 @@ function toggleHistorySpeech() {
   speakHistory(text);
 }
 
+function sponsorWebsiteUrl(org) {
+  return normalizePublicHttpUrl(org?.website || "");
+}
+
+function telHref(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/[^\d+]/g, "");
+  return digits ? `tel:${digits}` : "";
+}
+
 function setContact(org, site) {
   const link = $("contact-sponsor");
   if (!link) return;
@@ -353,9 +475,27 @@ function setContact(org, site) {
   link.href = `mailto:${org.email}?subject=${encodeURIComponent(`Just visited your site ${site.name}`)}`;
 }
 
-function isShopListing(site = state.current) {
+function orgLogoUrl(org) {
+  const raw = String(org?.logoUrl || "").trim();
+  if (!raw) return "";
+  const version = org?.logoVersion || org?.updatedAt || "";
+  const [path, query] = raw.split("?");
+  const base = /^https?:/i.test(path) ? path : assetUrl(path);
+  if (query) return `${base}?${query}`;
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base;
+}
+
+function listingKindForSite(site = state.current) {
   const org = findOrganisation(state.organisations, site?.organisationId);
-  return organisationKind(org) === "shop";
+  return organisationKind(org);
+}
+
+function isShopListing(site = state.current) {
+  return listingKindForSite(site) === "shop";
+}
+
+function isExhibitListing(site = state.current) {
+  return listingKindForSite(site) === "exhibit";
 }
 
 function applyGroupButtons() {
@@ -367,6 +507,7 @@ function applyGroupButtons() {
   selected("filter-sites", state.group === "sites");
   selected("filter-shops", state.group === "shops");
   selected("filter-restaurants", state.group === "restaurants");
+  selected("filter-exhibits", state.group === "exhibits");
   const decade = $("topic-field")?.querySelector('option[value="decade"]');
   if (decade) decade.hidden = state.group !== "sites";
   if (state.group !== "sites" && $("topic-field")?.value === "decade") $("topic-field").value = "text";
@@ -377,7 +518,11 @@ function applyGroupButtons() {
 function fillTopicCategory() {
   const select = $("topic-category");
   if (!select) return;
-  const names = state.group === "sites" ? state.categories.heritage : state.categories.shop;
+  const names = state.group === "sites"
+    ? state.categories.heritage
+    : state.group === "exhibits"
+      ? state.categories.exhibit
+      : state.categories.shop;
   const current = select.value;
   select.replaceChildren();
   const any = document.createElement("option");
@@ -417,7 +562,7 @@ function runGroupSearch() {
 }
 
 function setGroup(group, { random = false } = {}) {
-  state.group = group === "shops" || group === "restaurants" ? group : "sites";
+  state.group = group === "shops" || group === "restaurants" || group === "exhibits" ? group : "sites";
   applyGroupButtons();
   runGroupSearch();
   if (random && state.results.length) {
@@ -482,7 +627,6 @@ function resultLabel(site) {
   const org = findOrganisation(state.organisations, site.organisationId);
   if (!isListed(site, org)) parts.push("Archived listing");
   const pos = state.results.findIndex((item) => item.id === site.id);
-  if (pos >= 0) parts.push(`${pos + 1} of ${state.results.length}`);
   if (state.browsing === "tour" && pos >= 0 && state.results.length > 1) {
     const next = state.results[(pos + 1) % state.results.length];
     parts.push(`Next: ${next.name}`);
@@ -495,13 +639,20 @@ function showModes(mode) {
   $("view-lapsed").classList.toggle("hidden", mode !== "lapsed");
   $("view-empty").classList.toggle("hidden", mode !== "empty");
   $("view-missing").classList.toggle("hidden", mode !== "missing");
-  $("year-row").classList.toggle("hidden", mode === "empty" || mode === "missing");
+  if (mode === "empty" || mode === "missing") $("year-row").classList.add("hidden");
   $("tour-toggle").classList.toggle("hidden", mode !== "full");
   const rich = mode === "full";
-  $("maps-link").classList.toggle("pointer-events-none", !rich);
-  $("maps-link").classList.toggle("opacity-40", !rich);
-  if (rich) $("maps-link").removeAttribute("aria-disabled");
-  else $("maps-link").setAttribute("aria-disabled", "true");
+  $("maps-link")?.classList.toggle("pointer-events-none", !rich);
+  $("maps-link")?.classList.toggle("opacity-40", !rich);
+  $("sponsor-logo-link")?.classList.toggle("pointer-events-none", !rich);
+  $("sponsor-logo-link")?.classList.toggle("opacity-40", !rich);
+  if (rich) {
+    $("maps-link")?.removeAttribute("aria-disabled");
+    $("sponsor-logo-link")?.removeAttribute("aria-disabled");
+  } else {
+    $("maps-link")?.setAttribute("aria-disabled", "true");
+    $("sponsor-logo-link")?.setAttribute("aria-disabled", "true");
+  }
   $("save-btn").disabled = !rich;
   $("save-btn").classList.toggle("opacity-40", !rich);
   $("prev-site").disabled = state.results.length === 0;
@@ -515,12 +666,26 @@ function setSponsor(org, site) {
   if (!org || !site) {
     badge.textContent = "TouristQR";
     badge.removeAttribute("href");
+    badge.removeAttribute("target");
     setContact(null, null);
     return;
   }
-  badge.textContent = `Sponsored by ${org.name}`;
-  const body = `Comment about ${site.name}.\n${sitePublicUrl(site.id)}\n`;
-  badge.href = `mailto:${org.email}?subject=${encodeURIComponent("TouristQR.com")}&body=${encodeURIComponent(body)}`;
+  const exhibit = organisationKind(org) === "exhibit";
+  badge.textContent = exhibit ? String(org.name || "Sponsor").trim() : `Sponsored by ${org.name}`;
+  const website = sponsorWebsiteUrl(org);
+  if (website) {
+    badge.href = website;
+    badge.target = "_blank";
+    badge.rel = "noopener noreferrer";
+  } else if (org.email) {
+    const body = `Comment about ${site.name}.\n${sitePublicUrl(site.id)}\n`;
+    badge.href = `mailto:${org.email}?subject=${encodeURIComponent("TouristQR.com")}&body=${encodeURIComponent(body)}`;
+    badge.removeAttribute("target");
+    badge.removeAttribute("rel");
+  } else {
+    badge.removeAttribute("href");
+    badge.removeAttribute("target");
+  }
   setContact(org, site);
 }
 
@@ -530,7 +695,7 @@ function showPhoto(index) {
   state.photoIndex = (index + count) % count;
   const photo = state.gallery[state.photoIndex];
   const image = $("primary-image");
-  image.src = photo.url;
+  image.src = publicPhotoUrl(photo, state.current, state.catalogRevision);
   image.alt = photo.caption || state.current?.name || "Site photograph";
   image.classList.toggle("is-historical", photo.kind === "historical");
   $("photo-status").textContent = `Photograph ${state.photoIndex + 1} of ${count}`;
@@ -549,34 +714,19 @@ function showPhoto(index) {
   const thumbs = $("thumbnails-container");
   thumbs.replaceChildren();
   state.gallery.forEach((item, thumbIndex) => {
+    if (thumbIndex === state.photoIndex) return;
     const button = document.createElement("button");
     button.type = "button";
     button.className = `shrink-0 w-[31%] overflow-hidden rounded-lg shadow-sm bg-slate-200 aspect-[4/3] border-2 ${thumbIndex === state.photoIndex ? "border-blue-600" : "border-transparent"}`;
     button.setAttribute("aria-label", `Show photograph ${thumbIndex + 1}`);
     const thumb = document.createElement("img");
-    thumb.src = item.url;
+    thumb.src = publicPhotoUrl(item, state.current, state.catalogRevision);
     thumb.alt = "";
     thumb.className = "w-full h-full object-cover";
     button.append(thumb);
     button.addEventListener("click", () => showPhoto(thumbIndex));
     thumbs.append(button);
   });
-}
-
-function publicHttpUrl(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const withProtocol = /^https?:\/\//i.test(raw)
-    ? raw
-    : (/^(www\.|[a-z0-9-]+(\.[a-z0-9-]+)+)/i.test(raw) ? `https://${raw}` : "");
-  if (!withProtocol) return "";
-  try {
-    const parsed = new URL(withProtocol);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
-    return parsed.href;
-  } catch {
-    return "";
-  }
 }
 
 function linkifyDescription(el, text) {
@@ -592,7 +742,7 @@ function linkifyDescription(el, text) {
     const full = match[0];
     const core = full.replace(/[.,;:!?]+$/g, "");
     const punct = full.slice(core.length);
-    const href = publicHttpUrl(core);
+    const href = normalizePublicHttpUrl(core);
     if (href) {
       const link = document.createElement("a");
       link.href = href;
@@ -610,17 +760,141 @@ function linkifyDescription(el, text) {
   if (last < source.length) el.append(document.createTextNode(source.slice(last)));
 }
 
+function renderExhibitMeta(site) {
+  const panel = $("exhibit-meta");
+  if (!panel) return;
+  const exhibit = isExhibitListing(site);
+  panel.classList.toggle("hidden", !exhibit);
+  if (!exhibit) return;
+  const person = String(site.contactPerson || "").trim();
+  const email = String(site.contactEmail || "").trim();
+  const contactWrap = $("exhibit-contact-wrap");
+  if (contactWrap) {
+    contactWrap.classList.toggle("hidden", !person && !email);
+    const personLabel = $("exhibit-contact-person-label");
+    if (personLabel) personLabel.classList.toggle("hidden", !person);
+    if ($("exhibit-contact-person")) {
+      $("exhibit-contact-person").textContent = person;
+      $("exhibit-contact-person").classList.toggle("hidden", !person);
+    }
+    const emailWrap = $("exhibit-contact-email-wrap");
+    if (emailWrap) emailWrap.classList.toggle("hidden", !email);
+    if (email && $("exhibit-contact-email")) {
+      $("exhibit-contact-email").href = `mailto:${email}`;
+      $("exhibit-contact-email").textContent = email;
+    }
+  }
+  const owner = String(site.owner || "").trim();
+  if ($("exhibit-owner-wrap")) $("exhibit-owner-wrap").classList.toggle("hidden", !owner);
+  if ($("exhibit-owner")) $("exhibit-owner").textContent = owner;
+  const registration = String(site.registrationNumber || "").trim();
+  if ($("exhibit-registration-wrap")) $("exhibit-registration-wrap").classList.toggle("hidden", !registration);
+  if ($("exhibit-registration")) $("exhibit-registration").textContent = registration;
+}
+
+function updateMiddleAction(site, org) {
+  const mapsLink = $("maps-link");
+  const logoLink = $("sponsor-logo-link");
+  const logoImg = $("sponsor-logo-img");
+  if (!mapsLink || !logoLink) return;
+  const exhibit = isExhibitListing(site);
+  const logo = exhibit ? orgLogoUrl(org) : "";
+  const website = sponsorWebsiteUrl(org);
+  if (logo) {
+    mapsLink.classList.add("hidden");
+    logoLink.classList.remove("hidden");
+    if (logoImg) {
+      logoImg.src = logo;
+      logoImg.alt = `${String(org?.name || "Club").trim()} logo`;
+    }
+    logoLink.classList.remove("opacity-40");
+    if (website) {
+      logoLink.href = website;
+      logoLink.classList.remove("pointer-events-none");
+      logoLink.removeAttribute("aria-disabled");
+    } else {
+      logoLink.removeAttribute("href");
+      logoLink.classList.add("pointer-events-none");
+      logoLink.setAttribute("aria-disabled", "true");
+    }
+    return;
+  }
+  logoLink.classList.add("hidden");
+  logoLink.removeAttribute("href");
+  const query = String(site.mapsQuery || "").trim();
+  if (exhibit && !query) {
+    mapsLink.classList.add("hidden");
+    return;
+  }
+  mapsLink.classList.remove("hidden");
+  mapsLink.href = `https://maps.google.com/?q=${encodeURIComponent(query || site.name)}`;
+}
+
+function updateShopListingActions(site) {
+  const wrap = $("shop-listing-actions");
+  if (!wrap) return;
+  const shop = isShopListing(site);
+  wrap.classList.toggle("hidden", !shop);
+  if (!shop) return;
+  const web = $("shop-action-website");
+  const webLabel = $("shop-action-website-label");
+  const rawWeb = String(site.furtherReading || "").trim();
+  const webHref = normalizePublicHttpUrl(rawWeb);
+  if (web) {
+    web.classList.toggle("hidden", !webHref);
+    if (webHref) {
+      web.href = webHref;
+      if (webLabel) webLabel.textContent = rawWeb.replace(/^https?:\/\//i, "");
+    }
+  }
+  const phone = $("shop-action-phone");
+  const phoneLabel = $("shop-action-phone-label");
+  const phoneText = String(site.phone || "").trim();
+  const tel = telHref(phoneText);
+  if (phone) {
+    phone.classList.toggle("hidden", !tel);
+    if (tel) {
+      phone.href = tel;
+      if (phoneLabel) phoneLabel.textContent = phoneText;
+    }
+  }
+}
+
+function updateExhibitSponsorAction(org) {
+  const wrap = $("exhibit-sponsor-action");
+  const link = $("exhibit-sponsor-link");
+  if (!wrap || !link) return;
+  const name = String(org?.name || "").trim();
+  wrap.classList.toggle("hidden", !name);
+  if (!name) return;
+  link.textContent = name;
+  const website = sponsorWebsiteUrl(org);
+  if (website) {
+    link.href = website;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.classList.add("underline");
+  } else {
+    link.removeAttribute("href");
+    link.removeAttribute("target");
+    link.classList.remove("underline");
+  }
+}
+
 function renderFull(site) {
   state.gallery = photosInCodeOrder(site.photos);
   state.photoIndex = 0;
   linkifyDescription($("site-description"), site.description || "");
   const shop = isShopListing(site);
-  if ($("history-heading")) $("history-heading").textContent = shop ? "Description" : "Site History";
+  const exhibit = isExhibitListing(site);
+  if ($("history-heading")) {
+    $("history-heading").textContent = shop ? "Description" : exhibit ? "Item history" : "Site History";
+  }
   const webWrap = $("shop-website-wrap");
   const webLink = $("shop-website");
   if (webWrap && webLink) {
     const raw = String(site.furtherReading || "").trim();
-    const href = shop ? publicHttpUrl(raw) : "";
+    const href = shop ? normalizePublicHttpUrl(raw) : "";
     webWrap.classList.toggle("hidden", !href);
     if (href) {
       webLink.href = href;
@@ -630,11 +904,23 @@ function renderFull(site) {
       webLink.textContent = "";
     }
   }
-  if ($("oldest-heading")) $("oldest-heading").textContent = shop ? "Shop front" : "Oldest Known Photo";
-  if ($("year-label")) $("year-label").textContent = shop ? "Established" : "Established / Built";
+  if ($("oldest-heading")) {
+    $("oldest-heading").textContent = shop ? "Shop front" : exhibit ? "Advertising photo" : "Oldest Known Photo";
+  }
+  if ($("year-label")) {
+    $("year-label").textContent = shop ? "Established" : exhibit ? "Year of manufacture" : "Established / Built";
+  }
   const speak = $("history-speak");
-  if (speak) speak.classList.toggle("hidden", !speakerVisible() || !(site.description || "").trim());
-  $("maps-link").href = `https://maps.google.com/?q=${encodeURIComponent(site.mapsQuery || site.name)}`;
+  const showSpeak = speakerVisible() && !!(site.description || "").trim();
+  if (speak) {
+    speak.classList.toggle("hidden", !showSpeak);
+    if (showSpeak) setSpeakButton("idle");
+  }
+  const org = findOrganisation(state.organisations, site.organisationId);
+  updateMiddleAction(site, org);
+  updateShopListingActions(site);
+  updateExhibitSponsorAction(isExhibitListing(site) ? org : null);
+  renderExhibitMeta(site);
   const saved = readJson(FAVOURITES, []).includes(site.id);
   setStackButton($("save-btn"), saved ? "✅" : "⭐", saved ? "Saved" : "Save");
   const onTour = readJson(TOUR, []).includes(site.id);
@@ -643,8 +929,8 @@ function renderFull(site) {
   const historical = state.gallery.find((photo) => photo.kind === "historical") || null;
   $("oldest-section").classList.toggle("hidden", !historical);
   if (historical) {
-    $("oldest-img").src = historical.url;
-    $("oldest-img").alt = historical.caption || (shop ? "Shop front" : "Oldest known photograph");
+    $("oldest-img").src = publicPhotoUrl(historical, site, state.catalogRevision);
+    $("oldest-img").alt = historical.caption || (shop ? "Shop front" : exhibit ? "Advertising photo" : "Oldest known photograph");
     $("oldest-caption").textContent = historical.caption || "";
   }
   if (state.gallery.length) showPhoto(0);
@@ -665,8 +951,13 @@ function openSite(site) {
   }
   document.title = `${site.name} · TouristQR`;
   $("place-name").textContent = site.name;
-  if ($("year-label")) $("year-label").textContent = organisationKind(org) === "shop" ? "Established" : "Established / Built";
-  $("build-year").textContent = displayYear(site);
+  const yearText = displayYear(site);
+  const kind = organisationKind(org);
+  if ($("year-label")) {
+    $("year-label").textContent = kind === "shop" ? "Established" : kind === "exhibit" ? "Year of manufacture" : "Established / Built";
+  }
+  $("build-year").textContent = yearText;
+  $("year-row").classList.toggle("hidden", !yearText);
   $("result-label").textContent = resultLabel(site);
   setSponsor(org, site);
   rememberVisit(site.id);
@@ -687,6 +978,7 @@ function showCurrent() {
     const message = emptyMessage();
     $("place-name").textContent = message.title;
     $("build-year").textContent = "";
+    $("year-row").classList.add("hidden");
     $("result-label").textContent = "";
     $("view-empty").querySelector("p").textContent = message.body;
     setSponsor(null, null);
@@ -733,6 +1025,12 @@ function emptyMessage() {
     return {
       title: "No restaurants match",
       body: "Nothing public matches that restaurant search. Try a suburb, a city, or part of a restaurant name.",
+    };
+  }
+  if (state.group === "exhibits") {
+    return {
+      title: "No exhibits match",
+      body: "Nothing public matches that exhibit search. Try a suburb, a city, or part of an item name.",
     };
   }
   return {
@@ -862,23 +1160,32 @@ function bindPhotoSwipe() {
   });
 }
 
+const catalogueFetch = { cache: "no-store" };
+
+async function loadCatalogue() {
+  const bust = Date.now();
+  const [siteResponse, orgResponse, categoryResponse] = await Promise.all([
+    fetch(`${assetUrl("data/sites.json")}?v=${bust}`, catalogueFetch),
+    fetch(`${assetUrl("data/organisations.json")}?v=${bust}`, catalogueFetch),
+    fetch(`${assetUrl("data/categories.json")}?v=${bust}`, catalogueFetch).catch(() => null),
+  ]);
+  if (!siteResponse.ok || !orgResponse.ok) throw new Error("missing");
+  state.catalogRevision = bust;
+  state.sites = mergePublicCatalogue(await siteResponse.json(), readLocal(LOCAL_SITES));
+  state.organisations = mergePublicCatalogue(await orgResponse.json(), readLocal(LOCAL_ORGS));
+  if (categoryResponse?.ok) {
+    const lists = await categoryResponse.json();
+    state.categories = {
+      heritage: Array.isArray(lists.heritage) ? lists.heritage : [],
+      shop: Array.isArray(lists.shop) ? lists.shop : [],
+      exhibit: Array.isArray(lists.exhibit) ? lists.exhibit : [],
+    };
+  }
+}
+
 async function init() {
   try {
-    const [siteResponse, orgResponse, categoryResponse] = await Promise.all([
-      fetch(assetUrl("data/sites.json") + "?v=ios5"),
-      fetch(assetUrl("data/organisations.json") + "?v=ios5"),
-      fetch(assetUrl("data/categories.json") + "?v=ios5").catch(() => null),
-    ]);
-    if (!siteResponse.ok || !orgResponse.ok) throw new Error("missing");
-    state.sites = mergeById(await siteResponse.json(), readLocal(LOCAL_SITES));
-    state.organisations = mergeById(await orgResponse.json(), readLocal(LOCAL_ORGS));
-    if (categoryResponse?.ok) {
-      const lists = await categoryResponse.json();
-      state.categories = {
-        heritage: Array.isArray(lists.heritage) ? lists.heritage : [],
-        shop: Array.isArray(lists.shop) ? lists.shop : [],
-      };
-    }
+    await loadCatalogue();
   } catch {
     $("place-name").textContent = "Sites unavailable";
     $("result-label").textContent = "Start the app with node server.mjs so the shared catalogue can load.";
@@ -886,7 +1193,9 @@ async function init() {
   }
 
   try {
-    const requested = new URLSearchParams(window.location.search).get("site");
+    const requested = new URLSearchParams(window.location.search).get("site")
+      || parseGenericCode(window.location.pathname)?.listingId
+      || "";
     if (requested) {
       const site = state.sites.find((item) => item.id === requested);
       if (!site) {
@@ -1028,6 +1337,17 @@ on("scanner-close", "click", stopScanner);
 on("about-open", "click", () => setModal("about-modal", true));
 on("about-close", "click", () => setModal("about-modal", false));
 on("about-dismiss", "click", () => setModal("about-modal", false));
+on("ios-tts-consent-decline", "click", () => {
+  pendingStreamTtsText = "";
+  setModal("ios-tts-consent-modal", false);
+});
+on("ios-tts-consent-proceed", "click", () => {
+  const text = pendingStreamTtsText;
+  pendingStreamTtsText = "";
+  setModal("ios-tts-consent-modal", false);
+  setIosStreamTtsConsent();
+  if (text) speakHistoryAudio(text);
+});
 on("image-modal", "click", () => setModal("image-modal", false));
 
 on("save-btn", "click", () => {
@@ -1064,6 +1384,7 @@ on("topic-field", "change", () => {
 on("filter-sites", "click", () => setGroup("sites", { random: true }));
 on("filter-shops", "click", () => setGroup("shops", { random: true }));
 on("filter-restaurants", "click", () => setGroup("restaurants", { random: true }));
+on("filter-exhibits", "click", () => setGroup("exhibits", { random: true }));
 
 on("search-form", "submit", (event) => {
   event.preventDefault();
@@ -1084,6 +1405,8 @@ on("search-form", "submit", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   setModal("about-modal", false);
+  setModal("ios-tts-consent-modal", false);
+  pendingStreamTtsText = "";
   setModal("image-modal", false);
   closeExportSheet();
   stopScanner();
@@ -1091,11 +1414,23 @@ document.addEventListener("keydown", (event) => {
 
 try {
   bindPhotoSwipe();
-  if (speakerVisible()) {
+  if (speechSupported() && useDeviceVoice()) {
     loadSpeechVoices();
     window.speechSynthesis.addEventListener("voiceschanged", loadSpeechVoices);
   }
 } catch {
   // Speech and swipe extras must not stop the catalogue loading on iPhone.
 }
+
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  loadCatalogue()
+    .then(() => {
+      if (!state.current?.id) return;
+      const site = state.sites.find((item) => item.id === state.current.id);
+      if (site) openSite(site);
+    })
+    .catch(() => {});
+});
+
 init();
