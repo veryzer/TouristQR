@@ -424,6 +424,12 @@
                 <button type="button" id="visited-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Visited</button>
                 <button type="button" id="tour-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Tour</button>
             </div>
+            <aside id="list-your-place-promo" class="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-3 space-y-2 text-left">
+                <p id="list-your-place-kicker" class="text-[10px] font-bold uppercase tracking-wider text-blue-800/90">For businesses &amp; heritage groups</p>
+                <p id="list-your-place-headline" class="text-sm font-semibold text-slate-900 leading-snug">List your site, shop, restaurant, or exhibit</p>
+                <p id="list-your-place-blurb" class="text-xs text-slate-600 leading-relaxed">Get a public page with QR code, photos, and history — visitors can search, scan, and save favourites on their phone.</p>
+                <button type="button" id="list-your-place-open" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl">How to list</button>
+            </aside>
             <div class="flex justify-between items-center gap-3 text-xs min-h-[1.25rem]">
                 <a href="admin.html" class="text-slate-400 hover:text-slate-500 shrink-0">Sponsor login</a>
                 <a id="contact-sponsor" class="hidden text-blue-700 underline text-right" href="#">contact sponsor</a>
@@ -432,6 +438,20 @@
         </form>
     </footer>
 
+    <div id="list-your-place-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="list-your-place-title">
+            <div class="flex justify-between items-start gap-3">
+                <h3 id="list-your-place-title" class="text-lg font-bold text-slate-900">List on TouristQR</h3>
+                <button type="button" id="list-your-place-close" class="text-slate-400 hover:text-slate-600 font-bold shrink-0" aria-label="Close">✕</button>
+            </div>
+            <p id="list-your-place-intro" class="text-sm text-slate-600 leading-relaxed"></p>
+            <ul id="list-your-place-bullets" class="text-sm text-slate-700 space-y-2 list-disc pl-5"></ul>
+            <p id="list-your-place-footnote" class="text-xs text-slate-500 leading-relaxed"></p>
+            <a id="list-your-place-mailto" href="#" class="hidden w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium text-sm text-center">Email to get started</a>
+            <button type="button" id="list-your-place-dismiss" class="w-full bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Close</button>
+        </div>
+    </div>
+
     <div id="about-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
         <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="about-title">
             <div class="flex justify-between items-center">
@@ -439,6 +459,7 @@
                 <button type="button" id="about-close" class="text-slate-400 hover:text-slate-600 font-bold" aria-label="Close">✕</button>
             </div>
             <p class="text-sm text-slate-600 leading-relaxed">Scan a code at a place, or search the public list, then save favourites and a tour on this phone. The four sponsors in this copy are sample organisations, and their photographs are filed by sponsor number, such as 1-001.</p>
+            <button type="button" id="about-list-open" class="w-full border border-blue-200 bg-blue-50 text-blue-800 py-2.5 rounded-xl font-medium text-sm hover:bg-blue-100">List your site, shop, restaurant, or exhibit</button>
             <button type="button" id="about-dismiss" class="w-full bg-blue-600 text-white py-2.5 rounded-xl font-medium text-sm">Got it</button>
         </div>
     </div>
@@ -508,6 +529,6 @@
         </div>
     </div>
 
-    <script type="module" src="js/visitor.js?v=generic46"></script>
+    <script type="module" src="js/visitor.js?v=generic47"></script>
 </body>
 </html>

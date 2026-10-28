@@ -1,0 +1,22 @@
+{
+  "contactEmail": "info@touristqr.com",
+  "mailtoSubject": "TouristQR — list my place",
+  "kicker": "For businesses & heritage groups",
+  "headlineDefault": "List your site, shop, restaurant, or exhibit",
+  "headlineSites": "List your historic site",
+  "headlineShops": "List your shop",
+  "headlineRestaurants": "List your restaurant",
+  "headlineExhibits": "List your exhibit",
+  "blurb": "Get a public page with QR code, photos, and history — visitors can search, scan, and save favourites on their phone.",
+  "ctaLabel": "How to list",
+  "modalTitle": "List on TouristQR",
+  "modalIntro": "TouristQR is the mobile guide people use when they scan a code or search the catalogue. Add your place so it appears alongside other listings.",
+  "modalBullets": [
+    "Your own public page with photographs and wording",
+    "A unique QR link for signs, menus, and displays",
+    "Listed under Sites, Shops, Restaurants, or Exhibits",
+    "Sponsor login to update photos and text anytime"
+  ],
+  "modalFootnote": "Listing is set up with the TouristQR team. Tap below to send an email — include your business name, contact details, and whether you are a site, shop, restaurant, or exhibit.",
+  "mailtoLabel": "Email to get started"
+}

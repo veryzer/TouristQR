@@ -537,6 +537,111 @@ function applyGroupButtons() {
   if (state.group !== "sites" && $("topic-field")?.value === "decade") $("topic-field").value = "text";
   fillTopicCategory();
   toggleTopicControls();
+  applyListYourPlacePromo();
+}
+
+const DEFAULT_LIST_PROMO = {
+  contactEmail: "info@touristqr.com",
+  mailtoSubject: "TouristQR — list my place",
+  mailtoLabel: "Email to get started",
+  kicker: "For businesses & heritage groups",
+  headlineDefault: "List your site, shop, restaurant, or exhibit",
+  headlineSites: "List your historic site",
+  headlineShops: "List your shop",
+  headlineRestaurants: "List your restaurant",
+  headlineExhibits: "List your exhibit",
+  blurb: "Get a public page with QR code, photos, and history — visitors can search, scan, and save favourites on their phone.",
+  ctaLabel: "How to list",
+  modalTitle: "List on TouristQR",
+  modalIntro: "TouristQR is the mobile guide people use when they scan a code or search the catalogue. Add your place so it appears alongside other listings.",
+  modalBullets: [
+    "Your own public page with photographs and wording",
+    "A unique QR link for signs, menus, and displays",
+    "Listed under Sites, Shops, Restaurants, or Exhibits",
+    "Sponsor login to update photos and text anytime",
+  ],
+  modalFootnote: "Listing is set up with the TouristQR team. Tap below to send an email — include your business name, contact details, and whether you are a site, shop, restaurant, or exhibit.",
+};
+
+let listPromoConfig = { ...DEFAULT_LIST_PROMO };
+
+function listPromoHeadlineForGroup(group) {
+  const map = {
+    sites: listPromoConfig.headlineSites,
+    shops: listPromoConfig.headlineShops,
+    restaurants: listPromoConfig.headlineRestaurants,
+    exhibits: listPromoConfig.headlineExhibits,
+  };
+  return map[group] || listPromoConfig.headlineDefault;
+}
+
+function listKindWord(group) {
+  if (group === "shops") return "shop";
+  if (group === "restaurants") return "restaurant";
+  if (group === "exhibits") return "exhibit";
+  return "historic site";
+}
+
+function applyListYourPlacePromo() {
+  const cfg = listPromoConfig;
+  const kicker = $("list-your-place-kicker");
+  if (kicker) kicker.textContent = cfg.kicker || "";
+  const headline = $("list-your-place-headline");
+  if (headline) headline.textContent = listPromoHeadlineForGroup(state.group);
+  const blurb = $("list-your-place-blurb");
+  if (blurb) blurb.textContent = cfg.blurb || "";
+  const openBtn = $("list-your-place-open");
+  if (openBtn) openBtn.textContent = cfg.ctaLabel || "How to list";
+  const aboutBtn = $("about-list-open");
+  if (aboutBtn) aboutBtn.textContent = cfg.headlineDefault || listPromoHeadlineForGroup(state.group);
+
+  const title = $("list-your-place-title");
+  if (title) title.textContent = cfg.modalTitle || "List on TouristQR";
+  const intro = $("list-your-place-intro");
+  if (intro) intro.textContent = cfg.modalIntro || "";
+  const footnote = $("list-your-place-footnote");
+  if (footnote) footnote.textContent = cfg.modalFootnote || "";
+  const bullets = $("list-your-place-bullets");
+  if (bullets) {
+    bullets.replaceChildren();
+    (Array.isArray(cfg.modalBullets) ? cfg.modalBullets : []).forEach((text) => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      bullets.append(li);
+    });
+  }
+  const mail = $("list-your-place-mailto");
+  const email = String(cfg.contactEmail || "").trim();
+  if (mail) {
+    if (email) {
+      const subject = cfg.mailtoSubject || DEFAULT_LIST_PROMO.mailtoSubject;
+      const kind = listKindWord(state.group);
+      const body = `Hello,\n\nI would like to list my ${kind} on TouristQR.\n\nBusiness / place name:\nContact name:\nPhone:\n\nThank you.`;
+      mail.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      mail.textContent = cfg.mailtoLabel || DEFAULT_LIST_PROMO.mailtoLabel;
+      mail.classList.remove("hidden");
+    } else {
+      mail.classList.add("hidden");
+    }
+  }
+}
+
+async function loadListYourPlacePromo() {
+  try {
+    const response = await fetch(assetUrl("content/list-your-place-promo.json"), { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      listPromoConfig = { ...DEFAULT_LIST_PROMO, ...data };
+    }
+  } catch {
+    listPromoConfig = { ...DEFAULT_LIST_PROMO };
+  }
+  applyListYourPlacePromo();
+}
+
+function openListYourPlaceModal() {
+  applyListYourPlacePromo();
+  setModal("list-your-place-modal", true);
 }
 
 function fillTopicCategory() {
@@ -1573,6 +1678,7 @@ async function loadCatalogue() {
 }
 
 async function init() {
+  await loadListYourPlacePromo();
   try {
     await loadCatalogue();
     await loadSeoDefaults();
@@ -1836,6 +1942,13 @@ on("scanner-close", "click", stopScanner);
 on("about-open", "click", () => setModal("about-modal", true));
 on("about-close", "click", () => setModal("about-modal", false));
 on("about-dismiss", "click", () => setModal("about-modal", false));
+on("about-list-open", "click", () => {
+  setModal("about-modal", false);
+  openListYourPlaceModal();
+});
+on("list-your-place-open", "click", openListYourPlaceModal);
+on("list-your-place-close", "click", () => setModal("list-your-place-modal", false));
+on("list-your-place-dismiss", "click", () => setModal("list-your-place-modal", false));
 on("ios-tts-consent-decline", "click", () => {
   pendingStreamTtsText = "";
   setModal("ios-tts-consent-modal", false);
