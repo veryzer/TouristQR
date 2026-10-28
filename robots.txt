@@ -1,0 +1,11 @@
+# TouristQR — public catalogue is indexable; admin and data are not.
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /admin/
+Disallow: /signup.html
+Disallow: /docs/
+Disallow: /data/
+Disallow: /api/
+
+Sitemap: https://touristqr.com/sitemap.xml

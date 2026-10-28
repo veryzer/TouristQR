@@ -1,5 +1,5 @@
 import { assetUrl, genericPublicUrl, liveSiteUrl, sitePublicUrl } from "./config.js?v=admin19";
-import { prepareLogoFile, preparePhotoFile } from "./photo-file.js?v=admin31";
+import { PHOTO_UPLOAD_MAX, prepareLogoFile, preparePhotoFile } from "./photo-file.js?v=admin45";
 import {
   addMonths,
   categoriesForKind,
@@ -49,6 +49,7 @@ const saveBtnState = {
 };
 
 function siteSaveLabel() {
+  if (isRestaurantContext()) return "Save restaurant";
   if (isShopOrg()) return "Save shop";
   if (isExhibitOrg()) return "Save exhibit";
   return "Save site";
@@ -114,6 +115,12 @@ function initSaveButtonHints() {
   $("sponsor-form")?.addEventListener("change", markSponsorDirty);
   $("site-form")?.addEventListener("input", markSiteDirty);
   $("site-form")?.addEventListener("change", markSiteDirty);
+  document.querySelectorAll(".shop-group-radio").forEach((input) => {
+    input.addEventListener("change", () => {
+      applyWorkModeUi();
+      if (draftPhotos.length) renderPhotoRows();
+    });
+  });
 }
 let activeSiteId = "";
 let selectedOrgId = "";
@@ -123,7 +130,11 @@ let sponsorNotice = "";
 let workMode = "site";
 let catalogueSettings = { heritageCategories: [], shopCategories: [], exhibitCategories: [] };
 let syncingSelects = false;
+/** True after "+ Next new site/exhibit" — Select site dropdown is faded (not used while adding). */
+let creatingNewListing = false;
 let hasSponsorLogin = false;
+let sponsorProfileExpanded = false;
+let addSponsorExpanded = false;
 
 function isAdmin() {
   return currentUser?.role === "site-admin";
@@ -200,9 +211,25 @@ function showApp(signedIn) {
   $("app-screen")?.classList.toggle("hidden", !signedIn);
 }
 
+function applySponsorPickerVisibility() {
+  const admin = isAdmin();
+  if ($("sponsor-picker")) $("sponsor-picker").classList.toggle("hidden", !admin || workMode !== "site");
+  if ($("exhibit-sponsor-picker")) $("exhibit-sponsor-picker").classList.toggle("hidden", !admin || workMode !== "exhibit");
+  if ($("shop-sponsor-picker")) $("shop-sponsor-picker").classList.toggle("hidden", !admin || workMode !== "shop");
+  if ($("restaurant-sponsor-picker")) $("restaurant-sponsor-picker").classList.toggle("hidden", !admin || workMode !== "restaurant");
+}
+
+function applyAddSponsorCollapse() {
+  $("add-sponsor-body")?.classList.toggle("hidden", !addSponsorExpanded);
+  if ($("toggle-add-sponsor")) {
+    $("toggle-add-sponsor").textContent = addSponsorExpanded ? "Hide" : "Add sponsor";
+  }
+}
+
 function applyRoleUi() {
   const admin = isAdmin();
   document.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", !admin));
+  applySponsorPickerVisibility();
   document.querySelectorAll(".sponsor-id-note").forEach((el) => el.classList.toggle("hidden", admin));
   if ($("session-label")) {
     $("session-label").textContent = admin
@@ -210,6 +237,18 @@ function applyRoleUi() {
       : `Signed in as ${currentUser.username} · ${selectedOrg()?.name || organisations[0]?.name || "sponsor"}`;
   }
   if ($("sponsor-started")) $("sponsor-started").disabled = !admin;
+  if ($("backup-sponsor")) {
+    $("backup-sponsor").textContent = admin ? "Download this sponsor’s backup" : "Download my data";
+  }
+  if ($("restore-sponsor-label")) {
+    $("restore-sponsor-label").textContent = admin ? "Restore this sponsor’s backup" : "Restore my data";
+  }
+  if ($("sponsor-backup-download-note")) {
+    $("sponsor-backup-download-note").textContent = admin
+      ? "Sponsors are responsible for their own backups. This downloads one JSON file for the selected sponsor—profile, listings, listing photographs, and club logo when set (images packed inside the file)."
+      : "You are responsible for your own backups. Download my data from time to time and keep the file somewhere safe (computer, USB, or cloud). The JSON file includes your profile, your listings, your listing photographs, and your club logo when one is set—packed inside the file, not as separate .jpg downloads.";
+  }
+  if (admin) applyAddSponsorCollapse();
   renderNotice();
 }
 
@@ -269,8 +308,75 @@ function isShopOrg(org = selectedOrg()) {
   return organisationKind(org) === "shop";
 }
 
+function isShopWorkMode(mode = workMode) {
+  return mode === "shop" || mode === "restaurant";
+}
+
+function orgMatchesWorkMode(org, mode = workMode) {
+  if (!org) return false;
+  if (mode === "site") return organisationKind(org) === "site";
+  if (mode === "exhibit") return organisationKind(org) === "exhibit";
+  if (mode === "shop") return organisationKind(org) === "shop" && shopGroupOf(org) !== "restaurants";
+  if (mode === "restaurant") return organisationKind(org) === "shop" && shopGroupOf(org) === "restaurants";
+  return false;
+}
+
+function workModeForOrganisation(org) {
+  if (!org) return "site";
+  const kind = organisationKind(org);
+  if (kind === "exhibit") return "exhibit";
+  if (kind === "site") return "site";
+  return shopGroupOf(org) === "restaurants" ? "restaurant" : "shop";
+}
+
+function organisationsForWorkMode(mode = workMode) {
+  return organisations.filter((org) => orgMatchesWorkMode(org, mode));
+}
+
 function isExhibitOrg(org = selectedOrg()) {
   return organisationKind(org) === "exhibit";
+}
+
+function activeSiteRecord() {
+  return activeSiteId ? sites.find((item) => item.id === activeSiteId) : null;
+}
+
+function isRestaurantContext() {
+  if (!isShopOrg()) return false;
+  const org = selectedOrg();
+  const site = activeSiteRecord();
+  if (shopGroupOf(org, site) === "restaurants") return true;
+  return !site && selectedShopGroup() === "restaurants";
+}
+
+function featurePhotoKindLabel() {
+  if (isExhibitOrg()) return "Advertising photo";
+  if (isRestaurantContext() || isShopOrg()) return "Shop front";
+  return "Historical";
+}
+
+function enforceSingleFeaturedPhoto(photos) {
+  let featureIndex = -1;
+  (photos || []).forEach((photo, index) => {
+    if (photo?.kind === "historical" && featureIndex === -1) featureIndex = index;
+  });
+  return (photos || []).map((photo, index) => ({
+    ...photo,
+    kind: photo?.kind === "historical" && index === featureIndex ? "historical" : "current",
+  }));
+}
+
+function setPhotoKind(index, kind) {
+  const value = kind === "historical" ? "historical" : "current";
+  if (value === "historical") {
+    draftPhotos.forEach((photo, i) => {
+      photo.kind = i === index ? "historical" : "current";
+    });
+    renderPhotoRows();
+  } else {
+    draftPhotos[index].kind = "current";
+  }
+  markSiteDirty();
 }
 
 function isShopRecord(org) {
@@ -308,7 +414,7 @@ function setShopGroupRadios(value) {
 }
 
 function currentCategoryList() {
-  return categoriesForKind(workMode, catalogueSettings);
+  return categoriesForKind(workMode === "restaurant" ? "shop" : workMode, catalogueSettings);
 }
 
 function fillCategorySelect(selected) {
@@ -335,67 +441,202 @@ function fillCategorySelect(selected) {
   });
   select.value = names.includes(current) || current
     ? current
-    : (workMode === "shop" ? "Shops" : workMode === "exhibit" ? "Uncategorised" : "");
+    : (workMode === "restaurant" ? "Restaurants" : workMode === "shop" ? "Shops" : workMode === "exhibit" ? "Uncategorised" : "");
 }
 
 function applyWorkModeUi() {
-  const shop = workMode === "shop";
   const exhibit = workMode === "exhibit";
-  document.querySelectorAll(".heritage-only").forEach((el) => el.classList.toggle("hidden", shop || exhibit));
-  document.querySelectorAll(".place-listing-only").forEach((el) => el.classList.toggle("hidden", shop));
+  const shopWork = isShopWorkMode();
+  const restaurantUi = workMode === "restaurant" || (workMode === "shop" && isRestaurantContext());
+  document.querySelectorAll(".heritage-only").forEach((el) => el.classList.toggle("hidden", shopWork || exhibit));
+  document.querySelectorAll(".place-listing-only").forEach((el) => el.classList.toggle("hidden", shopWork));
   document.querySelectorAll(".exhibit-only").forEach((el) => el.classList.toggle("hidden", !exhibit));
-  document.querySelectorAll(".shop-only").forEach((el) => el.classList.toggle("hidden", !shop));
-  document.querySelectorAll(".site-sponsor-only").forEach((el) => el.classList.toggle("hidden", shop));
-  if ($("sponsor-picker")) $("sponsor-picker").classList.toggle("hidden", workMode !== "site");
-  if ($("exhibit-sponsor-picker")) $("exhibit-sponsor-picker").classList.toggle("hidden", workMode !== "exhibit");
-  if ($("shop-sponsor-picker")) $("shop-sponsor-picker").classList.toggle("hidden", workMode !== "shop");
-  document.querySelectorAll(".shop-sponsor-only").forEach((el) => el.classList.toggle("hidden", !shop));
+  document.querySelectorAll(".shop-only").forEach((el) => el.classList.toggle("hidden", !shopWork));
+  document.querySelectorAll(".restaurant-only").forEach((el) => el.classList.toggle("hidden", !restaurantUi));
+  $("shop-photo-help")?.classList.toggle("hidden", !shopWork || restaurantUi);
+  document.querySelectorAll(".site-sponsor-only").forEach((el) => el.classList.toggle("hidden", shopWork));
+  applySponsorPickerVisibility();
+  document.querySelectorAll(".shop-sponsor-only").forEach((el) => el.classList.toggle("hidden", !shopWork));
+  if (isAdmin() && shopWork && !selectedOrg()) {
+    setShopGroupRadios(workMode === "restaurant" ? "restaurants" : "shops");
+  }
   if ($("work-sites")) {
     $("work-sites").className = `text-xs px-3 py-2 rounded-xl font-medium ${workMode === "site" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-700"}`;
     $("work-shops").className = `text-xs px-3 py-2 rounded-xl font-medium ${workMode === "shop" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-700"}`;
+    $("work-restaurants").className = `text-xs px-3 py-2 rounded-xl font-medium ${workMode === "restaurant" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-700"}`;
     $("work-exhibits").className = `text-xs px-3 py-2 rounded-xl font-medium ${workMode === "exhibit" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-700"}`;
   }
   if ($("add-sponsor-title")) {
-    $("add-sponsor-title").textContent = shop ? "Add shop sponsor" : exhibit ? "Add exhibit sponsor" : "Add site sponsor";
+    $("add-sponsor-title").textContent = workMode === "restaurant"
+      ? "Add restaurant sponsor"
+      : workMode === "shop"
+        ? "Add shop sponsor"
+        : workMode === "exhibit"
+          ? "Add exhibit sponsor"
+          : "Add site sponsor";
   }
   if ($("site-form-title")) {
-    $("site-form-title").textContent = shop ? "Public shop page" : exhibit ? "Add / modify exhibit" : "Add / modify historic site";
+    $("site-form-title").textContent = restaurantUi
+      ? "Public restaurant page"
+      : shopWork
+        ? "Public shop page"
+        : exhibit
+          ? "Add / modify exhibit"
+          : "Add / modify historic site";
   }
   if ($("site-id-label")) {
-    $("site-id-label").textContent = shop ? "Shop ID (permanent)" : exhibit ? "Exhibit ID (permanent)" : "Site ID (permanent)";
+    $("site-id-label").textContent = restaurantUi
+      ? "Restaurant ID (permanent)"
+      : shopWork
+        ? "Shop ID (permanent)"
+        : exhibit
+          ? "Exhibit ID (permanent)"
+          : "Site ID (permanent)";
   }
-  if ($("site-name-label")) $("site-name-label").textContent = shop ? "Shop name" : exhibit ? "Item name" : "Place name";
+  if ($("site-name-label")) {
+    $("site-name-label").textContent = restaurantUi ? "Restaurant name" : shopWork ? "Shop name" : exhibit ? "Item name" : "Place name";
+  }
   if ($("site-year-label")) {
-    $("site-year-label").textContent = shop ? "Established (optional)" : exhibit ? "Year of manufacture (optional)" : "Build year (optional)";
+    $("site-year-label").textContent = shopWork
+      ? "Established (optional)"
+      : exhibit
+        ? "Year of manufacture (optional)"
+        : "Build year (optional)";
   }
   if ($("site-maps-label")) {
-    $("site-maps-label").textContent = shop ? "Address (optional)" : exhibit ? "Navigation / maps query (optional)" : "Google Maps query (optional)";
+    $("site-maps-label").textContent = shopWork
+      ? "Address (optional)"
+      : exhibit
+        ? "Navigation / maps query (optional)"
+        : "Google Maps query (optional)";
   }
   if ($("site-desc-label")) {
-    $("site-desc-label").textContent = shop ? "Description (optional)" : exhibit ? "Item history" : "History";
+    $("site-desc-label").textContent = shopWork ? "Description (optional)" : exhibit ? "Item history" : "History";
+  }
+  if ($("site-selector-label")) {
+    $("site-selector-label").textContent = exhibit ? "Select exhibit" : "Select site";
   }
   applySaveButtonState("save-site-button", saveBtnState.site, siteSaveLabel());
-  if ($("siteDesc")) $("siteDesc").required = !shop;
+  if ($("siteDesc")) $("siteDesc").required = !shopWork;
   if ($("qr-section-title")) {
-    $("qr-section-title").textContent = shop ? "QR code for this shop" : exhibit ? "QR code for this exhibit" : "QR code for this site";
+    $("qr-section-title").textContent = restaurantUi
+      ? "QR code for this restaurant"
+      : shopWork
+        ? "QR code for this shop"
+        : exhibit
+          ? "QR code for this exhibit"
+          : "QR code for this site";
   }
-  if ($("siteId")) $("siteId").placeholder = shop ? "little-malop-books" : "moorabool-wool-exchange";
+  if ($("siteId")) $("siteId").placeholder = shopWork ? "little-malop-books" : "moorabool-wool-exchange";
   if ($("delete-site")) {
-    $("delete-site").textContent = shop ? "Delete shop listing" : exhibit ? "Delete exhibit" : "Delete site";
+    $("delete-site").textContent = restaurantUi
+      ? "Delete restaurant listing"
+      : shopWork
+        ? "Delete shop listing"
+        : exhibit
+          ? "Delete exhibit"
+          : "Delete site";
   }
   if ($("category-editor-title")) {
-    $("category-editor-title").textContent = shop ? "Shop categories" : exhibit ? "Exhibit categories" : "Site categories";
+    $("category-editor-title").textContent = workMode === "restaurant"
+      ? "Restaurant categories"
+      : workMode === "shop"
+        ? "Shop categories"
+        : exhibit
+          ? "Exhibit categories"
+          : "Site categories";
   }
-  if ($("new-sponsor-email")) $("new-sponsor-email").required = !shop;
-  if ($("sponsor-email")) $("sponsor-email").required = !shop;
-  if ($("site-nav-wrap")) $("site-nav-wrap").classList.toggle("hidden", shop);
+  if ($("new-sponsor-email")) $("new-sponsor-email").required = !shopWork;
+  if ($("sponsor-email")) $("sponsor-email").required = !shopWork;
   fillCategorySelect($("siteCategory")?.value);
   renderCategoryEditor();
   applyExhibitSponsorLogoPanel();
+  updateAdminSectionLabels();
+  applySiteSelectorNewListingUi();
 }
 
 function applyExhibitSponsorLogoPanel(org = selectedOrg()) {
   $("exhibit-sponsor-logo-panel")?.classList.toggle("hidden", !isExhibitOrg(org));
+}
+
+function sponsorProfileSectionLabel(org = selectedOrg()) {
+  if (isExhibitOrg(org)) return "Exhibit Sponsor profile";
+  if (isShopOrg(org)) return isRestaurantContext() ? "Restaurant Sponsor profile" : "Shop Sponsor profile";
+  return "Site Sponsor profile";
+}
+
+function listingPageSectionLabel(org = selectedOrg()) {
+  if (isExhibitOrg(org)) return "Exhibit Page Data";
+  if (isShopOrg(org)) return isRestaurantContext() ? "Restaurant Page Data" : "Shop Page Data";
+  return "Site Page Data";
+}
+
+function applySiteSelectorNewListingUi() {
+  const wrap = $("site-selector-wrap");
+  if (!wrap || wrap.classList.contains("hidden")) return;
+  const muted = creatingNewListing;
+  wrap.classList.toggle("site-selector-muted", muted);
+  const sel = $("site-selector");
+  if (sel) sel.disabled = muted;
+}
+
+function setCreatingNewListing(active) {
+  creatingNewListing = Boolean(active);
+  applySiteSelectorNewListingUi();
+  $("cancel-new-listing")?.classList.toggle("hidden", !creatingNewListing);
+}
+
+function cancelNewListing() {
+  if (!creatingNewListing) return;
+  setCreatingNewListing(false);
+  const mine = sitesForSelectedSponsor();
+  const exhibit = isExhibitOrg();
+  const listingWord = exhibit ? "exhibit" : "site";
+  if (mine.length === 1) {
+    loadSite(mine[0].id);
+    setStatus("");
+    return;
+  }
+  if (mine.length > 1) {
+    activeSiteId = "";
+    syncingSelects = true;
+    if ($("site-selector")) $("site-selector").value = "";
+    syncingSelects = false;
+    fillForm(null);
+    clearQr();
+    showSitePanel();
+    setStatus(`Choose a ${listingWord} from the list, or press + Next new ${listingWord} again to add another.`);
+    return;
+  }
+  openBlankListingEditor(selectedOrg());
+  setStatus("");
+}
+
+function updateAdminSectionLabels(org = selectedOrg()) {
+  if ($("sponsor-section-label")) {
+    $("sponsor-section-label").textContent = org ? sponsorProfileSectionLabel(org) : sponsorProfileSectionLabel({ kind: workMode });
+  }
+  if ($("site-section-label")) {
+    $("site-section-label").textContent = org ? listingPageSectionLabel(org) : listingPageSectionLabel({ kind: workMode });
+  }
+}
+
+function setSponsorProfileExpanded(expanded) {
+  sponsorProfileExpanded = expanded;
+  const panel = $("sponsor-profile-collapsible");
+  const button = $("sponsor-edit-profile");
+  if (panel) panel.classList.toggle("hidden", !expanded);
+  if (button) button.textContent = expanded ? "Hide profile" : "Edit profile";
+}
+
+function applySponsorProfileCollapse() {
+  if (!selectedOrg()) {
+    $("sponsor-edit-profile")?.classList.add("hidden");
+    $("sponsor-profile-collapsible")?.classList.remove("hidden");
+    return;
+  }
+  $("sponsor-edit-profile")?.classList.remove("hidden");
+  setSponsorProfileExpanded(sponsorProfileExpanded);
 }
 
 function validateSiteForm() {
@@ -556,12 +797,24 @@ function statusLabel(org) {
   return "Active";
 }
 
-function sortByExpiryChecked() {
-  return Boolean($("sort-by-expiry")?.checked || $("sort-shop-by-expiry")?.checked || $("sort-exhibit-by-expiry")?.checked);
+function sponsorStatusPillText(org) {
+  const label = statusLabel(org);
+  if (label !== "Active") return label;
+  const until = publicUntilIso(org.subscribedAt, extraMonthsOf(org));
+  return until ? `${label} · till: ${formatDay(until)}` : label;
 }
 
-function sortedOrganisations(kind = workMode) {
-  const list = organisations.filter((org) => organisationKind(org) === kind);
+function sortByExpiryChecked() {
+  return Boolean(
+    $("sort-by-expiry")?.checked
+    || $("sort-shop-by-expiry")?.checked
+    || $("sort-restaurant-by-expiry")?.checked
+    || $("sort-exhibit-by-expiry")?.checked,
+  );
+}
+
+function sortedOrganisations(mode = workMode) {
+  const list = organisationsForWorkMode(mode);
   const byName = (a, b) => sponsorDisplayName(a).localeCompare(sponsorDisplayName(b), undefined, { sensitivity: "base" });
   if (sortByExpiryChecked()) {
     list.sort((a, b) => {
@@ -581,20 +834,34 @@ function sponsorOptionLabel(org) {
   return `${sponsorDisplayName(org)} · ${statusLabel(org)}${untilText}`;
 }
 
+function listingCountTotals() {
+  let siteListings = 0;
+  let shopListings = 0;
+  let restaurantListings = 0;
+  let exhibitListings = 0;
+  for (const site of sites) {
+    const org = findOrganisation(organisations, site.organisationId);
+    const kind = organisationKind(org);
+    if (kind === "site") siteListings += 1;
+    else if (kind === "exhibit") exhibitListings += 1;
+    else if (kind === "shop") {
+      if (shopGroupOf(org, site) === "restaurants") restaurantListings += 1;
+      else shopListings += 1;
+    }
+  }
+  return { siteListings, shopListings, restaurantListings, exhibitListings };
+}
+
 function renderTotals() {
   const el = $("catalogue-totals");
   if (!el) return;
-  const siteSponsors = organisations.filter((org) => organisationKind(org) === "site").length;
-  const shopSponsors = organisations.filter((org) => organisationKind(org) === "shop").length;
-  const exhibitSponsors = organisations.filter((org) => organisationKind(org) === "exhibit").length;
-  const historic = sites.filter((site) => organisationKind(findOrganisation(organisations, site.organisationId)) === "site").length;
-  const exhibits = sites.filter((site) => organisationKind(findOrganisation(organisations, site.organisationId)) === "exhibit").length;
-  const shops = sites.length - historic - exhibits;
+  const sponsors = organisations.length;
+  const { siteListings, shopListings, restaurantListings, exhibitListings } = listingCountTotals();
   const photos = photoCount();
-  el.textContent = `${siteSponsors} site sponsor${siteSponsors === 1 ? "" : "s"} · ${shopSponsors} shop sponsor${shopSponsors === 1 ? "" : "s"} · ${exhibitSponsors} exhibit sponsor${exhibitSponsors === 1 ? "" : "s"} · ${historic} site${historic === 1 ? "" : "s"} · ${shops} shop listing${shops === 1 ? "" : "s"} · ${exhibits} exhibit${exhibits === 1 ? "" : "s"} · ${photos} photograph${photos === 1 ? "" : "s"}`;
+  el.textContent = `${sponsors} sponsor${sponsors === 1 ? "" : "s"} · ${siteListings} site${siteListings === 1 ? "" : "s"} · ${shopListings} shop${shopListings === 1 ? "" : "s"} · ${restaurantListings} restaurant${restaurantListings === 1 ? "" : "s"} · ${exhibitListings} exhibit${exhibitListings === 1 ? "" : "s"} · ${photos} photograph${photos === 1 ? "" : "s"}`;
 }
 
-function fillSponsorSelect(selectId, kind) {
+function fillSponsorSelect(selectId, mode) {
   const selector = $(selectId);
   if (!selector) return;
   syncingSelects = true;
@@ -604,7 +871,7 @@ function fillSponsorSelect(selectId, kind) {
     blank.value = "";
     blank.textContent = "Choose a sponsor";
     selector.append(blank);
-    sortedOrganisations(kind).forEach((org) => {
+    sortedOrganisations(mode).forEach((org) => {
       const key = organisationKey(org);
       if (!key) return;
       const option = document.createElement("option");
@@ -613,8 +880,7 @@ function fillSponsorSelect(selectId, kind) {
       selector.append(option);
     });
     const org = selectedOrg();
-    const selectedKind = org ? organisationKind(org) : "";
-    selector.value = org && selectedKind === kind ? organisationKey(org) : "";
+    selector.value = org && orgMatchesWorkMode(org, mode) ? organisationKey(org) : "";
   } finally {
     syncingSelects = false;
   }
@@ -623,6 +889,7 @@ function fillSponsorSelect(selectId, kind) {
 function renderSponsorOptions() {
   fillSponsorSelect("sponsor-selector", "site");
   fillSponsorSelect("shop-sponsor-selector", "shop");
+  fillSponsorSelect("restaurant-sponsor-selector", "restaurant");
   fillSponsorSelect("exhibit-sponsor-selector", "exhibit");
 }
 
@@ -634,7 +901,7 @@ function renderSponsorPanel() {
     return;
   }
   $("sponsor-heading").textContent = `${org.number || "–"} · ${sponsorDisplayName(org)}`;
-  $("sponsor-status-pill").textContent = statusLabel(org);
+  $("sponsor-status-pill").textContent = sponsorStatusPillText(org);
   if ($("sponsor-name")) $("sponsor-name").value = String(org.name || "").trim() || sponsorDisplayName(org);
   if ($("sponsor-contact-name")) $("sponsor-contact-name").value = org.contactName || "";
   if ($("sponsor-contact-email")) $("sponsor-contact-email").value = org.contactEmail || "";
@@ -655,13 +922,15 @@ function renderSponsorPanel() {
   resetSponsorSaveButton();
   $("site-sponsor-label").textContent = sponsorDisplayName(org);
   const shop = isShopOrg(org);
-  if ($("site-nav-wrap")) $("site-nav-wrap").classList.toggle("hidden", shop);
   if ($("site-selector-wrap")) $("site-selector-wrap").classList.toggle("hidden", shop);
-  if ($("new-site")) $("new-site").classList.toggle("hidden", shop);
   if ($("new-site")) {
-    $("new-site").textContent = shop ? "+ Add this shop" : isExhibitOrg(org) ? "+ Next new exhibit" : "+ Next new site";
+    $("new-site").classList.toggle("hidden", shop);
+    $("new-site").textContent = isExhibitOrg(org) ? "+ Next new exhibit" : "+ Next new site";
   }
   renderSelector();
+  applySiteSelectorNewListingUi();
+  updateAdminSectionLabels(org);
+  applySponsorProfileCollapse();
 }
 
 function uniqueListingId(preferred, excludeId = "") {
@@ -691,6 +960,7 @@ function previewListingId() {
 }
 
 function openBlankListingEditor(org) {
+  setCreatingNewListing(false);
   fillForm(null);
   if ($("siteName")) $("siteName").value = org?.name || "";
   if (isAdmin() && isShopOrg(org)) {
@@ -709,6 +979,7 @@ function openBlankListingEditor(org) {
 
 function openSponsorListingEditor(org, { keepSite = false } = {}) {
   if (!org) return;
+  if (!keepSite) setCreatingNewListing(false);
   const mine = sitesForSelectedSponsor();
   if (isShopOrg(org)) {
     if (mine.length) loadSite(mine[0].id);
@@ -736,10 +1007,11 @@ function openSponsorListingEditor(org, { keepSite = false } = {}) {
   showSitePanel();
 }
 
-function selectSponsor(id, { keepSite = false } = {}) {
+function selectSponsor(id, { keepSite = false, keepProfileOpen = false } = {}) {
   selectedOrgId = organisations.some((org) => organisationKey(org) === id || org.id === id) ? id : "";
   const org = selectedOrg();
-  if (org) workMode = organisationKind(org);
+  if (org && isAdmin()) workMode = workModeForOrganisation(org);
+  if (org && !keepProfileOpen) sponsorProfileExpanded = false;
   renderSponsorOptions();
   renderSponsorPanel();
   if (!org) return;
@@ -748,6 +1020,7 @@ function selectSponsor(id, { keepSite = false } = {}) {
 
 function hideSitePanel() {
   $("site-panel").classList.add("hidden");
+  setCreatingNewListing(false);
   activeSiteId = "";
   syncingSelects = true;
   if ($("site-selector")) $("site-selector").value = "";
@@ -782,10 +1055,16 @@ function renderSelector() {
   } finally {
     syncingSelects = false;
   }
+  applySiteSelectorNewListingUi();
 }
 
-function photosInOrder(photos) {
-  return [...(photos || [])].sort((a, b) => comparePhotoCodes(a.code, b.code));
+function movePhoto(index, delta) {
+  const target = index + delta;
+  if (target < 0 || target >= draftPhotos.length) return;
+  const [photo] = draftPhotos.splice(index, 1);
+  draftPhotos.splice(target, 0, photo);
+  renderPhotoRows();
+  markSiteDirty();
 }
 
 function renderPhotoRows() {
@@ -827,19 +1106,20 @@ function renderPhotoRows() {
     for (const value of ["current", "historical"]) {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value === "historical"
-        ? (isShopOrg() ? "Shop front" : isExhibitOrg() ? "Advertising photo" : "Historical")
-        : "Current";
+      option.textContent = value === "historical" ? featurePhotoKindLabel() : "Current";
       kind.append(option);
     }
     kind.value = photo.kind === "historical" ? "historical" : "current";
     kind.addEventListener("change", () => {
-      draftPhotos[index].kind = kind.value;
-      markSiteDirty();
+      setPhotoKind(index, kind.value);
     });
 
     const actions = document.createElement("div");
-    actions.className = "flex gap-2";
+    actions.className = "space-y-2";
+    const orderRow = document.createElement("div");
+    orderRow.className = "flex flex-wrap gap-2";
+    const fileRow = document.createElement("div");
+    fileRow.className = "flex flex-wrap gap-2";
     const replace = document.createElement("label");
     replace.className = "text-xs border border-slate-300 px-2 py-1 rounded-lg cursor-pointer";
     replace.textContent = "Replace file";
@@ -863,7 +1143,21 @@ function renderPhotoRows() {
       renderPhotoRows();
       markSiteDirty();
     });
-    actions.append(replace, remove);
+    const moveUp = document.createElement("button");
+    moveUp.type = "button";
+    moveUp.className = "text-xs border border-slate-300 px-2 py-1 rounded-lg disabled:opacity-40";
+    moveUp.textContent = "Move up";
+    moveUp.disabled = index === 0;
+    moveUp.addEventListener("click", () => movePhoto(index, -1));
+    const moveDown = document.createElement("button");
+    moveDown.type = "button";
+    moveDown.className = "text-xs border border-slate-300 px-2 py-1 rounded-lg disabled:opacity-40";
+    moveDown.textContent = "Move down";
+    moveDown.disabled = index === draftPhotos.length - 1;
+    moveDown.addEventListener("click", () => movePhoto(index, 1));
+    orderRow.append(moveUp, moveDown);
+    fileRow.append(replace, remove);
+    actions.append(orderRow, fileRow);
     fields.append(code, caption, kind, actions);
     row.append(image, fields);
     wrap.append(row);
@@ -1011,7 +1305,7 @@ function fillForm(site) {
   if ($("sitePhone")) $("sitePhone").value = site?.phone || "";
   setShopGroupRadios(shopGroupOf(selectedOrg(), site));
   const loadedAt = Date.now();
-  draftPhotos = photosInOrder(site?.photos || []).map((photo) => ({
+  draftPhotos = enforceSingleFeaturedPhoto(site?.photos || []).map((photo) => ({
     ...photo,
     preview: adminPhotoPreview(photo, loadedAt),
     previewVersion: loadedAt,
@@ -1028,6 +1322,7 @@ function fillForm(site) {
 function loadSite(id) {
   const site = sitesForSelectedSponsor().find((item) => item.id === id);
   if (!site) return;
+  setCreatingNewListing(false);
   syncingSelects = true;
   $("site-selector").value = id;
   syncingSelects = false;
@@ -1136,7 +1431,7 @@ function formPayload() {
     furtherReading: shop ? normalizeWebsiteField($("siteReadingShop")?.value) : (existing?.furtherReading || ""),
     phone: shop ? ($("sitePhone")?.value.trim() || "") : "",
     sources: shop ? [] : (existing?.sources || []),
-    photos: draftPhotos.map((photo) => {
+    photos: enforceSingleFeaturedPhoto(draftPhotos).map((photo) => {
       const row = {
         code: photo.code,
         url: String(photo.url || "").split("?")[0].split("#")[0],
@@ -1155,7 +1450,7 @@ function refreshAfterCatalogueChange() {
   renderTotals();
   renderSponsorOptions();
   if (selectedOrgId && organisations.some((org) => organisationKey(org) === selectedOrgId || org.id === selectedOrgId)) {
-    selectSponsor(selectedOrgId, { keepSite: true });
+    selectSponsor(selectedOrgId, { keepSite: true, keepProfileOpen: sponsorProfileExpanded });
     if (activeSiteId) loadSite(activeSiteId);
   } else if (!isAdmin() && organisations[0]) {
     selectSponsor(organisations[0].id);
@@ -1236,6 +1531,11 @@ $("shop-sponsor-selector")?.addEventListener("change", () => {
   selectSponsor($("shop-sponsor-selector").value);
 });
 
+$("restaurant-sponsor-selector")?.addEventListener("change", () => {
+  if (syncingSelects) return;
+  selectSponsor($("restaurant-sponsor-selector").value);
+});
+
 $("exhibit-sponsor-selector")?.addEventListener("change", () => {
   if (syncingSelects) return;
   selectSponsor($("exhibit-sponsor-selector").value);
@@ -1252,7 +1552,12 @@ document.querySelectorAll(".expiry-sort").forEach((box) => {
 
 $("work-sites")?.addEventListener("click", () => setWorkMode("site"));
 $("work-shops")?.addEventListener("click", () => setWorkMode("shop"));
+$("work-restaurants")?.addEventListener("click", () => setWorkMode("restaurant"));
 $("work-exhibits")?.addEventListener("click", () => setWorkMode("exhibit"));
+on("toggle-add-sponsor", "click", () => {
+  addSponsorExpanded = !addSponsorExpanded;
+  applyAddSponsorCollapse();
+});
 $("add-category")?.addEventListener("click", () => addCategory());
 $("category-pick")?.addEventListener("change", syncCategoryEditorFields);
 $("rename-category")?.addEventListener("click", () => {
@@ -1272,12 +1577,15 @@ on("site-selector", "change", () => {
   if (syncingSelects) return;
   if ($("site-selector").value) loadSite($("site-selector").value);
   else {
+    setCreatingNewListing(false);
     activeSiteId = "";
     fillForm(null);
     clearQr();
     showSitePanel();
   }
 });
+
+on("cancel-new-listing", "click", () => cancelNewListing());
 
 on("new-site", "click", () => {
   if (!selectedOrgId) {
@@ -1288,6 +1596,7 @@ on("new-site", "click", () => {
     setStatus("A shop sponsor can have only one listing.", "error");
     return;
   }
+  setCreatingNewListing(true);
   syncingSelects = true;
   $("site-selector").value = "";
   syncingSelects = false;
@@ -1507,13 +1816,20 @@ async function saveCategoryLists() {
 }
 
 function categoryListKey() {
-  if (workMode === "shop") return "shopCategories";
+  if (isShopWorkMode()) return "shopCategories";
   if (workMode === "exhibit") return "exhibitCategories";
   return "heritageCategories";
 }
 
 function listingMatchesCategoryEditor(site) {
-  return organisationKind(findOrganisation(organisations, site.organisationId)) === workMode;
+  const org = findOrganisation(organisations, site.organisationId);
+  if (workMode === "restaurant") {
+    return organisationKind(org) === "shop" && shopGroupOf(org, site) === "restaurants";
+  }
+  if (workMode === "shop") {
+    return organisationKind(org) === "shop" && shopGroupOf(org, site) !== "restaurants";
+  }
+  return organisationKind(org) === workMode;
 }
 
 function syncCategoryEditorFields() {
@@ -1525,7 +1841,7 @@ function syncCategoryEditorFields() {
 function renderCategoryEditor() {
   const select = $("category-pick");
   if (!select) return;
-  const names = categoriesForKind(workMode, catalogueSettings);
+  const names = categoriesForKind(workMode === "restaurant" ? "shop" : workMode, catalogueSettings);
   const previous = select.value;
   select.replaceChildren();
   names.forEach((name) => {
@@ -1551,7 +1867,7 @@ async function renameCategory(from, to) {
   try {
     await saveCategoryLists();
     await saveSites(sites);
-    if (workMode !== "shop") fillCategorySelect(nextName);
+    if (!isShopWorkMode()) fillCategorySelect(nextName);
     renderCategoryEditor();
     if ($("category-pick")) $("category-pick").value = nextName;
     syncCategoryEditorFields();
@@ -1570,7 +1886,7 @@ async function removeCategory(name) {
   try {
     await saveCategoryLists();
     await saveSites(sites);
-    if (workMode !== "shop") fillCategorySelect(UNCATEGORISED);
+    if (!isShopWorkMode()) fillCategorySelect(UNCATEGORISED);
     renderCategoryEditor();
     if ($("category-pick")) $("category-pick").value = UNCATEGORISED;
     syncCategoryEditorFields();
@@ -1592,7 +1908,7 @@ async function addCategory() {
   try {
     await saveCategoryLists();
     $("new-category-name").value = "";
-    if (workMode !== "shop") fillCategorySelect(name);
+    if (!isShopWorkMode()) fillCategorySelect(name);
     renderCategoryEditor();
     if ($("category-pick")) $("category-pick").value = name;
     syncCategoryEditorFields();
@@ -1603,11 +1919,19 @@ async function addCategory() {
 }
 
 function setWorkMode(mode) {
-  workMode = mode === "shop" ? "shop" : mode === "exhibit" ? "exhibit" : "site";
+  workMode = mode === "shop"
+    ? "shop"
+    : mode === "restaurant"
+      ? "restaurant"
+      : mode === "exhibit"
+        ? "exhibit"
+        : "site";
   applyWorkModeUi();
   renderSponsorOptions();
   renderCategoryEditor();
   fillCategorySelect();
+  const org = selectedOrg();
+  if (org && !orgMatchesWorkMode(org)) selectSponsor("");
 }
 
 let loginLoadToken = 0;
@@ -1770,6 +2094,10 @@ on("remove-sponsor-logo", "click", () => {
   });
 });
 
+on("sponsor-edit-profile", "click", () => {
+  setSponsorProfileExpanded(!sponsorProfileExpanded);
+});
+
 on("sponsor-form", "submit", async (event) => {
   event.preventDefault();
   const org = selectedOrg();
@@ -1901,8 +2229,8 @@ async function restoreFromFile(file, expectedKind) {
   const backup = JSON.parse(await file.text());
   if (backup.kind !== expectedKind) {
     throw new Error(expectedKind === "full"
-      ? "That file is not a whole-catalogue backup."
-      : "That file is not a sponsor backup.");
+      ? "That file is not a catalogue backup."
+      : "That file is not a sponsor data backup.");
   }
   const backupOrgId = backup.organisationId || backup.organisations?.[0]?.id || "";
   if (expectedKind === "sponsor") {
@@ -1926,7 +2254,7 @@ on("new-sponsor", "submit", async (event) => {
   event.preventDefault();
   if (!isAdmin()) return;
   const name = $("new-sponsor-name").value.trim();
-  const email = workMode === "shop" ? "" : $("new-sponsor-email").value.trim();
+  const email = isShopWorkMode() ? "" : $("new-sponsor-email").value.trim();
   const contactName = ($("new-sponsor-contact-name")?.value || "").trim();
   const contactEmail = ($("new-sponsor-contact-email")?.value || "").trim();
   const username = $("new-sponsor-username").value.trim();
@@ -1942,7 +2270,7 @@ on("new-sponsor", "submit", async (event) => {
     return;
   }
   const number = Math.max(0, ...organisations.map((org) => Number(org.number) || 0)) + 1;
-  if (workMode !== "shop" && !email) {
+  if (!isShopWorkMode() && !email) {
     setStatus("Enter a public contact email address.", "error");
     return;
   }
@@ -1950,9 +2278,9 @@ on("new-sponsor", "submit", async (event) => {
     number,
     id,
     name,
-    type: workMode === "shop" ? "Shop" : workMode === "exhibit" ? "Exhibit" : "Organisation",
-    kind: workMode,
-    ...(workMode === "shop" ? { shopGroup: "shops" } : {}),
+    type: workMode === "restaurant" ? "Restaurant" : workMode === "shop" ? "Shop" : workMode === "exhibit" ? "Exhibit" : "Organisation",
+    kind: workMode === "exhibit" ? "exhibit" : workMode === "site" ? "site" : "shop",
+    ...(isShopWorkMode() ? { shopGroup: workMode === "restaurant" ? "restaurants" : "shops" } : {}),
     email,
     contactName,
     contactEmail,
@@ -1963,6 +2291,8 @@ on("new-sponsor", "submit", async (event) => {
     await saveOrganisations();
     await createSponsorLogin(id, username, password);
     $("new-sponsor").reset();
+    addSponsorExpanded = false;
+    applyAddSponsorCollapse();
     selectSponsor(id);
     setStatus(`${name} was added as sponsor ${number}, with login ${username}.`, "success");
   } catch (error) {
@@ -1973,7 +2303,7 @@ on("new-sponsor", "submit", async (event) => {
 on("backup-all", "click", async () => {
   try {
     await downloadScope("full");
-    setStatus("Whole catalogue downloaded.", "success");
+    setStatus("Catalogue backup downloaded.", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1982,7 +2312,7 @@ on("backup-all", "click", async () => {
 on("backup-sponsor", "click", async () => {
   try {
     await downloadScope("sponsor");
-    setStatus("Sponsor backup downloaded.", "success");
+    setStatus(isAdmin() ? "Sponsor backup downloaded." : "Your data backup downloaded.", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1992,10 +2322,10 @@ on("restore-all-file", "change", async (event) => {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
-  if (!window.confirm("Restore all replaces the current catalogue. Continue?")) return;
+  if (!window.confirm("Restore catalogue backup replaces every sponsor, listing, login, and site setting on the server with this file. Continue?")) return;
   try {
     await restoreFromFile(file, "full");
-    setStatus("Restore complete. The previous catalogue was replaced.", "success");
+    setStatus("Catalogue restore complete. The previous catalogue was replaced.", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -2005,10 +2335,15 @@ on("restore-sponsor-file", "change", async (event) => {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
-  if (!window.confirm("Restore this sponsor replaces that sponsor’s current records. Continue?")) return;
+  const sponsorConfirm = isAdmin()
+    ? "Restore this sponsor’s backup replaces that sponsor’s profile and listings on the server. Other sponsors are unchanged. Continue?"
+    : "Restore my data replaces your sponsor profile and listings on the server with this file. Continue?";
+  if (!window.confirm(sponsorConfirm)) return;
   try {
     await restoreFromFile(file, "sponsor");
-    setStatus("Sponsor restore complete. The previous records for this sponsor were replaced.", "success");
+    setStatus(isAdmin()
+      ? "Sponsor restore complete. That sponsor’s previous records were replaced."
+      : "Restore complete. Your previous profile and listings were replaced.", "success");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -2107,6 +2442,22 @@ on("view-live", "click", () => {
   window.open(liveSiteUrl(id), "_blank", "noopener");
 });
 
+async function applyBackupCalloutsFromContent() {
+  try {
+    const response = await fetch("content/welcome-signup-email.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.adminSponsorBackupCallout && $("sponsor-backup-callout")) {
+      $("sponsor-backup-callout").textContent = data.adminSponsorBackupCallout;
+    }
+    if (data.adminCatalogueBackupCallout && $("catalogue-backup-callout")) {
+      $("catalogue-backup-callout").textContent = data.adminCatalogueBackupCallout;
+    }
+  } catch {
+    // Keep the fallback text baked into admin.html.
+  }
+}
+
 async function enterApp(user) {
   currentUser = user;
   const [siteResponse, orgResponse] = await Promise.all([
@@ -2119,7 +2470,7 @@ async function enterApp(user) {
   sites = await siteResponse.json();
   organisations = await orgResponse.json();
   showApp(true);
-  workMode = isAdmin() ? "site" : organisationKind(organisations[0]);
+  workMode = isAdmin() ? "site" : workModeForOrganisation(organisations[0]);
   applyWorkModeUi();
   renderTotals();
   renderSponsorOptions();
@@ -2131,7 +2482,7 @@ async function enterApp(user) {
     }
   }
   applyRoleUi();
-  await loadSettings();
+  await Promise.all([loadSettings(), applyBackupCalloutsFromContent()]);
   if (isAdmin()) prefillGenericStart();
   if (!isAdmin() && selectedOrg()) openSponsorListingEditor(selectedOrg(), { keepSite: true });
 }
@@ -2273,5 +2624,119 @@ async function init() {
   }
 }
 
+const PHOTO_MAX_MB = (PHOTO_UPLOAD_MAX / 1_000_000).toFixed(1).replace(/\.0$/, "");
+
+const PUBLIC_IMAGE_SIZE_GUIDE = [
+  "Normal gallery photos: 4∶3, max 1200×900.",
+  "Special strip (Historical, shop front, or advertising photo): 16∶9, max 1200×675.",
+  "Club logo (exhibit sponsors, Sponsor profile): 128×128 square.",
+];
+
+function adminInfoSections() {
+  return {
+    catalogue: {
+      title: "Catalogue",
+      bullets: [
+        "Site admin only. Totals count sponsors, historic sites, shops, restaurants, exhibits, and all photographs on the server.",
+        "Use Sites, Shops, Restaurants, or Exhibits to choose which kind of sponsor you pick and add.",
+        "Yellow sponsor picker panels sort by public listing end date when the expiry box is ticked.",
+      ],
+    },
+    sponsor: {
+      title: "Sponsor profile",
+      bullets: [
+        "Business name is shown on the public page as “Sponsored by …”. Contact name and contact email are for TouristQR only.",
+        "Login name: 3–40 characters — lowercase letters, numbers, dots, hyphens, or underscores. Leave blank when saving to keep the current login name.",
+        "Password: at least 8 characters when you set a new one. Leave blank to keep the current password.",
+        "Historic site sponsors need a public contact email for visitors. Shop and restaurant sponsors do not use that field on the profile form.",
+        "Sponsor website (optional): visitors can open it from the public page; use a full https:// address.",
+        "Exhibit club logo (optional): 128×128 square. JPEG, PNG, GIF, or WebP; animated GIFs are kept as GIF. Larger uploads are resized on save. GIF uploads up to about " + PHOTO_MAX_MB + " MB.",
+        "The number before the sponsor name is permanent. Photographs use sponsor number plus reference (for example 4-001.jpg).",
+        "Public listing stays open for 12 months (plus any referral bonus months), then one grace month — see Active · till at the top.",
+      ],
+    },
+    pageData: {
+      title: "Page Data (listing editor)",
+      bullets: [
+        "Place or shop name is required. Site and exhibit listings also need history text before you can save.",
+        "Site admin: permanent listing id is 1–80 characters, lowercase letters, numbers, and hyphens only.",
+        "Sponsor login: the public id is created from the name when you save and cannot be changed later.",
+        "Shop and restaurant sponsors can have only one listing. Site and exhibit sponsors can have many (+ Next new …).",
+        "Photographs: up to " + MAX_PHOTOS + " per listing. JPEG, PNG, and WebP are resized so the longest side is about 1200 px. GIF files up to about " + PHOTO_MAX_MB + " MB are stored unchanged (animation kept).",
+        ...PUBLIC_IMAGE_SIZE_GUIDE,
+        "Mark one photograph as Historical, Shop front, or Advertising photo for the special 16∶9 strip on the public page (one per listing).",
+        "Optional captions on photos. Photograph codes are assigned automatically and are not reused after removal.",
+        "On a computer you can paste an image from the clipboard when adding or replacing a photo.",
+      ],
+    },
+    qr: {
+      title: "QR code",
+      bullets: [
+        "The QR image opens the public TouristQR address for this listing (https://touristqr.com/…).",
+        "Download the PNG for printing. If you change the listing id or name (and thus the public address), check this code again after saving.",
+        "Shop sponsors see the code for their single listing. Pick a site from the list or save a new one to refresh the preview.",
+      ],
+    },
+    backupCatalogue: {
+      title: "Catalogue backup (site admin)",
+      bullets: [
+        "You are responsible for site-wide recovery. Your host may also snapshot the server; catalogue backup is your portable copy of TouristQR content.",
+        "Download catalogue backup: one JSON file (name like touristqr-all-YYYY-MM-DD.json) with every sponsor, listing, listing photographs, club logos (when on the server), logins, notice, and categories—images are packed inside the JSON.",
+        "Ask each sponsor to use Download my data on their profile and keep their own copy too.",
+        "Not in the file: admin activity log, visitor Saved/Visited/Tour data (in each visitor’s browser), and website code.",
+        "Restore catalogue backup replaces the entire live catalogue. Use for disaster recovery—not for undoing a single edit.",
+      ],
+    },
+    sponsorData: {
+      title: "Sponsor data backup",
+      bullets: [
+        "You are responsible for your own backups. TouristQR does not store off-site copies for you.",
+        "Download my data: one JSON file with your profile, listings, listing photographs, and club logo (when set). Images are packed inside the file—keep the file somewhere safe off the website.",
+        "Site admin: pick a sponsor, then Download this sponsor’s backup to test or assist them.",
+        "Login name and password are not in this file (only catalogue backup includes logins).",
+        "Restore my data writes your saved profile, listings, photographs, and logo back on the server from your file. Other sponsors are unchanged.",
+        "Restore does not merge: an older file overwrites your current sponsor block.",
+      ],
+    },
+  };
+}
+
+function openAdminInfoCallout(key) {
+  const section = adminInfoSections()[key];
+  if (!section) return;
+  $("admin-info-callout-title").textContent = section.title;
+  const list = $("admin-info-callout-list");
+  list.replaceChildren();
+  section.bullets.forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    list.append(li);
+  });
+  $("admin-info-callout")?.classList.remove("hidden");
+}
+
+function closeAdminInfoCallout() {
+  $("admin-info-callout")?.classList.add("hidden");
+}
+
+function initAdminInfoCallouts() {
+  document.querySelectorAll("[data-admin-info]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openAdminInfoCallout(button.getAttribute("data-admin-info"));
+    });
+  });
+  on("admin-info-callout-close", "click", closeAdminInfoCallout);
+  $("admin-info-callout")?.addEventListener("click", (event) => {
+    if (event.target === $("admin-info-callout")) closeAdminInfoCallout();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("admin-info-callout")?.classList.contains("hidden")) {
+      closeAdminInfoCallout();
+    }
+  });
+}
+
 initSaveButtonHints();
+initAdminInfoCallouts();
 init();

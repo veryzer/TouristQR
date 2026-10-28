@@ -24,12 +24,14 @@ import {
   comparePhotoCodes,
   findOrganisation,
   genericLabelsForSponsor,
+  isListed,
   nextGenericCode,
   nextPhotoCode,
   parseGenericCode,
   parsePhotoCode,
   formatPhotoCode,
 } from "./js/model.js";
+import { sitePublicUrl } from "./js/config.js";
 import { buildSignupRecords } from "./js/signup-records.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
@@ -514,6 +516,47 @@ function requireAdmin(req, res) {
   return user;
 }
 
+function backupPhotoFilePath(photo) {
+  const url = String(photo?.url || "").split("?")[0].split("#")[0];
+  if (url.startsWith("images/")) {
+    const file = path.join(root, "images", path.basename(url));
+    if (fs.existsSync(file)) return file;
+  }
+  const code = String(photo?.code || "");
+  if (!code) return null;
+  const file = path.join(root, "images", `${code}.jpg`);
+  return fs.existsSync(file) ? file : null;
+}
+
+function readOrgLogoForBackup(org) {
+  const url = String(org?.logoUrl || "").split("?")[0];
+  if (url.startsWith("images/")) {
+    const file = path.join(root, "images", path.basename(url));
+    if (fs.existsSync(file)) {
+      const ext = path.extname(file).slice(1).toLowerCase() || "jpg";
+      return { relativeUrl: url, ext, base64: fs.readFileSync(file).toString("base64") };
+    }
+  }
+  const stem = orgLogoStem(org);
+  for (const ext of ["jpg", "jpeg", "png", "webp", "gif"]) {
+    const file = path.join(root, "images", `${stem}.${ext}`);
+    if (fs.existsSync(file)) {
+      return { relativeUrl: `images/${stem}.${ext}`, ext, base64: fs.readFileSync(file).toString("base64") };
+    }
+  }
+  return null;
+}
+
+function collectBackupOrgLogos(orgs) {
+  const logos = [];
+  for (const org of orgs || []) {
+    const entry = readOrgLogoForBackup(org);
+    if (!entry) continue;
+    logos.push({ ...entry, organisationId: org.id || "" });
+  }
+  return logos;
+}
+
 function collectBackupPhotos(sites) {
   const photos = [];
   for (const site of sites) {
@@ -522,9 +565,8 @@ function collectBackupPhotos(sites) {
         photos.push({ code: photo.code, dataUrl: photo.url });
         continue;
       }
-      const relative = String(photo.url || "").replace(/^images\//i, "");
-      const file = path.join(root, "images", relative || `${photo.code}.jpg`);
-      if (fs.existsSync(file)) {
+      const file = backupPhotoFilePath(photo);
+      if (file) {
         photos.push({ code: photo.code, jpeg: fs.readFileSync(file).toString("base64") });
       }
     }
@@ -536,8 +578,26 @@ function restoreBackupPhotos(photos) {
   if (!Array.isArray(photos)) return;
   fs.mkdirSync(path.join(root, "images"), { recursive: true });
   for (const photo of photos) {
-    if (!parsePhotoCode(photo.code) || !photo.jpeg) continue;
-    fs.writeFileSync(path.join(root, "images", `${photo.code}.jpg`), Buffer.from(photo.jpeg, "base64"));
+    if (!parsePhotoCode(photo.code)) continue;
+    const dest = path.join(root, "images", `${photo.code}.jpg`);
+    if (photo.jpeg) {
+      fs.writeFileSync(dest, Buffer.from(photo.jpeg, "base64"));
+      continue;
+    }
+    const dataUrl = String(photo.dataUrl || "");
+    const match = /^data:image\/[\w+.-]+;base64,(.+)$/.exec(dataUrl);
+    if (match) fs.writeFileSync(dest, Buffer.from(match[1], "base64"));
+  }
+}
+
+function restoreBackupOrgLogos(logos) {
+  if (!Array.isArray(logos)) return;
+  fs.mkdirSync(path.join(root, "images"), { recursive: true });
+  for (const logo of logos) {
+    const relative = String(logo.relativeUrl || "");
+    const base64 = String(logo.base64 || "");
+    if (!relative.startsWith("images/") || !base64) continue;
+    fs.writeFileSync(path.join(root, "images", path.basename(relative)), Buffer.from(base64, "base64"));
   }
 }
 
@@ -581,9 +641,64 @@ function writeSites(incoming, organisations) {
   return sites;
 }
 
+function emitSitemapXml(res) {
+  const sites = readJson("sites.json");
+  const organisations = readJson("organisations.json");
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+    "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">",
+    `  <url><loc>https://touristqr.com/</loc><changefreq>daily</changefreq><priority>1.0</priority><lastmod>${today}</lastmod></url>`,
+  ];
+  for (const site of sites) {
+    const org = findOrganisation(organisations, site.organisationId);
+    if (!org || !isListed(site, org)) continue;
+    const loc = sitePublicUrl(site.id).replace(/&/g, "&amp;");
+    let lastmod = String(site.updatedAt || site.createdAt || today).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastmod)) lastmod = today;
+    lines.push(`  <url><loc>${loc}</loc><changefreq>weekly</changefreq><priority>0.8</priority><lastmod>${lastmod}</lastmod></url>`);
+  }
+  lines.push("</urlset>");
+  res.writeHead(200, {
+    "Content-Type": "application/xml; charset=UTF-8",
+    "Cache-Control": "public, max-age=3600",
+  });
+  res.end(`${lines.join("\n")}\n`);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
+
+    if ((url.pathname === "/sitemap.xml" || url.pathname === "/api/sitemap") && req.method === "GET") {
+      emitSitemapXml(res);
+      return;
+    }
+
+    if (url.pathname === "/api/tts" && req.method === "GET") {
+      const text = String(url.searchParams.get("text") || "").trim().slice(0, 500);
+      if (!text) {
+        res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Missing text.");
+        return;
+      }
+      const google = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-AU&q=${encodeURIComponent(text)}`;
+      const upstream = await fetch(google, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; TouristQR/1.0)" },
+      });
+      if (!upstream.ok) {
+        res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Speech audio is unavailable.");
+        return;
+      }
+      const audio = Buffer.from(await upstream.arrayBuffer());
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(audio);
+      return;
+    }
 
     if (url.pathname === "/api/session" && req.method === "GET") {
       sendJson(res, 200, { user: publicUser(currentUser(req)) });
@@ -801,6 +916,7 @@ const server = http.createServer(async (req, res) => {
         backup = buildBackup({ kind: "sponsor", organisationId, organisations, sites });
       }
       backup.photos = collectBackupPhotos(backup.sites);
+      backup.orgLogos = collectBackupOrgLogos(backup.organisations);
       logActivity({ action: "backup", kind: backup.kind, organisationId: backup.organisationId || null, by: user.username });
       sendJson(res, 200, backup);
       return;
@@ -826,6 +942,7 @@ const server = http.createServer(async (req, res) => {
         writeSettings(backup.settings);
       }
       restoreBackupPhotos(backup.photos);
+      restoreBackupOrgLogos(backup.orgLogos);
       logActivity({ action: "restore", kind: backup.kind, organisationId: backup.organisationId || null, by: user.username });
       sendJson(res, 200, {
         organisations: organisationsForActor(organisations, user),

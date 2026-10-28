@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-AU">
 <head>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-HPTSX3NLZY"></script>
@@ -16,11 +16,61 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <meta name="theme-color" content="#1e3a8a">
-    <title>TouristQR</title>
+    <meta name="description" content="Scan QR codes at historic places, local shops, restaurants, and exhibits around Geelong and Victoria. Search the public catalogue, save favourites, and build a tour on your phone.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="author" content="TouristQR">
+    <meta property="og:locale" content="en_AU">
+    <meta property="og:site_name" content="TouristQR">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="TouristQR — Heritage sites, shops &amp; exhibits in Geelong">
+    <meta property="og:description" content="Scan QR codes at historic places, local shops, restaurants, and exhibits. Search, save favourites, and build a tour on your phone.">
+    <meta property="og:url" content="https://touristqr.com/">
+    <meta property="og:image" content="https://touristqr.com/images/touristqr-social.jpg">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://touristqr.com/images/touristqr-social.jpg">
+    <link rel="icon" href="/images/touristqr-icon.jpg" type="image/jpeg">
+    <link rel="apple-touch-icon" href="/images/touristqr-icon.jpg">
+    <meta name="twitter:title" content="TouristQR — Heritage sites, shops &amp; exhibits in Geelong">
+    <meta name="twitter:description" content="Scan QR codes at historic places, local shops, restaurants, and exhibits around Geelong and Victoria.">
+    <link rel="canonical" href="https://touristqr.com/" id="canonical-link">
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
+    <title>TouristQR — Heritage sites, shops &amp; exhibits in Geelong</title>
     <link rel="stylesheet" href="/css/app.css?v=local1">
     <style>
         .hidden { display: none !important; }
         #primary-image.is-historical { filter: sepia(0.35); }
+        #photo-frame { cursor: zoom-in; }
+        #primary-image {
+            -webkit-user-drag: none;
+            user-select: none;
+        }
+        #thumbnails-container {
+            --thumb-slot-width: calc((100% - 1rem) / 3);
+            --thumb-carousel-gutter: calc(50% - var(--thumb-slot-width) / 2);
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: var(--thumb-slot-width);
+            gap: 0.5rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-snap-type: x mandatory;
+            scroll-padding-inline: var(--thumb-carousel-gutter);
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            overscroll-behavior-x: contain;
+        }
+        #thumbnails-container::-webkit-scrollbar {
+            display: none;
+        }
+        #thumbnails-container .thumb-slot {
+            width: 100%;
+            justify-self: stretch;
+            scroll-snap-align: center;
+            scroll-snap-stop: always;
+        }
         header.app-bar {
             background: #1e3a8a;
             color: #fff;
@@ -57,6 +107,22 @@
             padding: 0;
             -webkit-appearance: none;
             appearance: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.12rem;
+        }
+        header.app-bar #about-open .brand-mark-text {
+            line-height: 1;
+        }
+        header.app-bar #about-open .brand-mark-qr {
+            height: 1.05em;
+            width: auto;
+            display: block;
+            object-fit: contain;
+            object-position: left center;
+            /* Tight crop: drop outer viewfinder brackets; tune if you swap artwork */
+            clip-path: inset(8% 6% 8% 4%);
+            margin: -0.12em -0.2em -0.12em -0.05em;
         }
         header.app-bar #sponsor-badge {
             font-size: 0.7rem;
@@ -100,15 +166,106 @@
         header.app-bar .group-tabs button[aria-selected="true"]:hover {
             background: #fff;
         }
+        /* Saved / Visited / Tour filter — not in Tailwind build (toggled from JS) */
+        #search-submit-btn.search-exit-mode {
+            background-color: #16a34a;
+            color: #fff;
+        }
+        #search-submit-btn.search-exit-mode:hover {
+            background-color: #15803d;
+        }
+        /* Text search filter active: pink = filter on, green = tap Show all to release */
+        #search-submit-btn.search-exit-search {
+            background: linear-gradient(90deg, #ec4899 0%, #ec4899 50%, #16a34a 50%, #16a34a 100%);
+            color: #fff;
+            font-weight: 600;
+        }
+        #search-submit-btn.search-exit-search:hover {
+            background: linear-gradient(90deg, #db2777 0%, #db2777 50%, #15803d 50%, #15803d 100%);
+        }
+        #saved-btn.list-filter-active,
+        #visited-btn.list-filter-active,
+        #tour-btn.list-filter-active {
+            background-color: #ec4899;
+            border-color: #db2777;
+            color: #fff;
+        }
+        #saved-btn.list-filter-active:hover,
+        #visited-btn.list-filter-active:hover,
+        #tour-btn.list-filter-active:hover {
+            background-color: #db2777;
+        }
+        .site-nav-arrow {
+            display: block;
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+        #site-nav-cluster.site-nav-filtered {
+            border: 2px solid #ec4899;
+            border-radius: 0.75rem;
+            padding: 0.2rem 0.35rem 0.15rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.05rem;
+        }
+        #site-nav-cluster.site-nav-filtered .site-nav-arrow {
+            width: 0.625rem;
+            height: 0.625rem;
+        }
+        #site-nav-cluster.site-nav-filtered #prev-site,
+        #site-nav-cluster.site-nav-filtered #next-site {
+            padding: 0.15rem 0.3rem;
+        }
+        #site-nav-filtered-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #db2777;
+            line-height: 1.1;
+            margin: 0;
+        }
+        #export-actions .export-action-used {
+            background-color: #94a3b8 !important;
+            border-color: #64748b !important;
+            color: #fff !important;
+        }
+        #export-actions .export-action-used:hover {
+            background-color: #64748b !important;
+        }
+        /* Match gap under listing header to arrow → Export (gap-1) */
+        #content > #view-full,
+        #content > #view-lapsed,
+        #content > #view-empty,
+        #content > #view-missing {
+            margin-top: 0.25rem !important;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+    <noscript>
+        <p class="text-sm text-slate-600 bg-white border border-slate-200 rounded-xl p-4 m-4 max-w-md mx-auto">
+            <strong>TouristQR</strong> is a mobile-friendly guide to public historic sites, shops, restaurants, and exhibits.
+            Enable JavaScript to search the catalogue, view photographs, and save favourites. Sponsors maintain listings at
+            <a href="admin.html" class="text-blue-700 underline">admin login</a>.
+        </p>
+    </noscript>
+    <div id="seo-defaults" class="hidden" aria-hidden="true"
+        data-title="TouristQR — Heritage sites, shops &amp; exhibits in Geelong"
+        data-description="Scan QR codes at historic places, local shops, restaurants, and exhibits around Geelong and Victoria. Search the public catalogue, save favourites, and build a tour on your phone."
+        data-site-name="TouristQR"
+        data-og-image="images/touristqr-social.jpg"
+        data-icon="images/touristqr-icon.jpg"></div>
 
     <header class="app-bar">
         <div class="app-bar-inner">
             <div class="app-bar-top">
-                <button type="button" id="about-open">TouristQR</button>
-                <a id="sponsor-badge" href="#">Sponsored by</a>
+                <button type="button" id="about-open" aria-label="About TouristQR">
+                    <span class="brand-mark-text">Tourist</span>
+                    <img class="brand-mark-qr" src="images/touristqr-wordmark-qr.jpg?v=1" alt="" width="52" height="26" decoding="async">
+                </button>
+                <a id="sponsor-badge" href="#" target="_blank" rel="noopener noreferrer">Sponsored by</a>
             </div>
             <div class="group-tabs" role="tablist" aria-label="Listing type">
                 <button type="button" id="filter-sites" role="tab" aria-selected="true">Sites</button>
@@ -119,27 +276,33 @@
         </div>
     </header>
 
-    <main id="content" class="max-w-md mx-auto w-full p-4 flex-grow space-y-5">
-
-        <div class="flex justify-between items-start gap-3">
+    <main id="content" class="max-w-md mx-auto w-full px-4 pb-4 pt-1 flex-grow space-y-5">
+        <div id="listing-heading" class="flex justify-between items-start gap-3">
             <div class="min-w-0">
-                <h2 id="place-name" class="text-2xl font-bold text-slate-900 scroll-mt-20">Loading site…</h2>
+                <h1 id="place-name" class="text-2xl font-bold text-slate-900 scroll-mt-5">Loading site…</h1>
                 <p id="year-row" class="text-xs text-slate-500"><span id="year-label">Established / Built</span>: <span id="build-year" class="font-semibold text-slate-700">–</span></p>
                 <p id="result-label" class="text-xs text-slate-500 mt-1" aria-live="polite"></p>
             </div>
             <div class="flex flex-col items-end gap-1 shrink-0">
-                <div class="flex gap-1">
-                    <button type="button" id="prev-site" aria-label="Previous site" title="Previous site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">⬅</button>
-                    <button type="button" id="next-site" aria-label="Next site" title="Next site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm font-bold">➡</button>
+                <div id="site-nav-cluster">
+                    <div class="flex gap-1 justify-center">
+                        <button type="button" id="prev-site" aria-label="Previous site" title="Previous site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm">
+                            <svg class="site-nav-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                        <button type="button" id="next-site" aria-label="Next site" title="Next site" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 p-2 rounded-xl text-slate-700 shadow-sm">
+                            <svg class="site-nav-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
+                    <p id="site-nav-filtered-label" class="hidden" aria-hidden="true">Filtered</p>
                 </div>
                 <button type="button" id="export-page" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 shadow-sm">Export</button>
             </div>
         </div>
 
-        <div id="view-full" class="space-y-5">
+        <div id="view-full" class="space-y-1">
             <div class="space-y-2">
                 <div id="photo-frame" class="relative overflow-hidden rounded-xl shadow-md bg-slate-200 aspect-[4/3] select-none touch-pan-y" role="group" aria-label="Site photographs">
-                    <img id="primary-image" src="" alt="" class="w-full h-full object-cover">
+                    <img id="primary-image" src="" alt="" class="w-full h-full object-cover" draggable="false">
                     <button type="button" id="photo-prev" aria-label="Previous photograph" class="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 text-white text-lg leading-none">‹</button>
                     <button type="button" id="photo-next" aria-label="Next photograph" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 text-white text-lg leading-none">›</button>
                     <div class="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md pointer-events-none">Tap to zoom</div>
@@ -147,20 +310,16 @@
                     <div id="photo-dots" class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 pointer-events-none"></div>
                     <p id="photo-status" class="sr-only" aria-live="polite"></p>
                 </div>
-                <div id="thumbnails-container" class="flex gap-2 overflow-x-auto"></div>
+                <div id="thumbnails-container" class="hidden" role="region" aria-label="Photograph thumbnails"></div>
                 <p id="photo-caption" class="text-xs text-slate-500 italic text-center min-h-4"></p>
             </div>
 
-            <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
+            <section id="site-history-section" class="bg-white px-4 pb-4 pt-1 rounded-xl shadow-sm border border-slate-100 space-y-2">
                 <div class="flex items-center justify-between gap-2">
                     <h3 id="history-heading" class="text-xs font-bold uppercase tracking-wider text-slate-400">Site History</h3>
                     <button type="button" id="history-speak" class="hidden shrink-0 w-9 h-9 rounded-full border border-slate-200 bg-white text-base leading-none hover:bg-slate-50" aria-label="Read site history" title="Read site history">🔊</button>
                 </div>
                 <p id="site-description" class="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap"></p>
-                <p id="shop-website-wrap" class="hidden text-sm">
-                    <span class="block text-xs font-bold uppercase tracking-wider text-slate-400">Website</span>
-                    <a id="shop-website" href="#" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline break-all"></a>
-                </p>
             </section>
 
             <section id="exhibit-meta" class="hidden bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
@@ -181,7 +340,7 @@
                 </div>
             </section>
 
-            <section id="oldest-section" class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-2">
+            <section id="oldest-section" class="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100 space-y-2">
                 <h3 id="oldest-heading" class="text-xs font-bold uppercase tracking-wider text-slate-400">Oldest Known Photo</h3>
                 <button type="button" id="oldest-open" class="block w-full overflow-hidden rounded-lg bg-slate-200 aspect-[16/9]">
                     <img id="oldest-img" src="" alt="" class="w-full h-full object-cover filter sepia-[0.3]">
@@ -215,7 +374,8 @@
                 <span id="shop-action-phone-label"></span>
             </a>
         </div>
-        <p id="exhibit-sponsor-action" class="hidden text-center text-sm">
+        <p id="exhibit-sponsor-action" class="hidden text-center text-sm text-slate-600">
+            Exhibitor sponsored by
             <a id="exhibit-sponsor-link" href="#" target="_blank" rel="noopener noreferrer" class="text-blue-700 font-semibold underline"></a>
         </p>
         <div class="grid grid-cols-3 gap-2">
@@ -259,15 +419,14 @@
                 <select id="topic-category" class="hidden min-w-0 flex-1 border border-slate-300 rounded-xl p-2 text-sm bg-white"></select>
             </div>
             <div class="grid grid-cols-4 gap-2">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 rounded-xl">Search</button>
+                <button type="submit" id="search-submit-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 rounded-xl">Search</button>
                 <button type="button" id="saved-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Saved</button>
                 <button type="button" id="visited-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Visited</button>
                 <button type="button" id="tour-btn" class="bg-white border border-slate-300 text-xs font-medium py-2 rounded-xl">Tour</button>
             </div>
-            <div class="flex justify-between gap-2 text-xs">
-                <button type="button" id="email-saved" class="text-blue-700 underline">Email saved list</button>
-                <a id="contact-sponsor" class="hidden text-blue-700 underline" href="#">contact sponsor</a>
-                <button type="button" id="email-tour" class="text-blue-700 underline">Email tour</button>
+            <div class="flex justify-between items-center gap-3 text-xs min-h-[1.25rem]">
+                <a href="admin.html" class="text-slate-400 hover:text-slate-500 shrink-0">Sponsor login</a>
+                <a id="contact-sponsor" class="hidden text-blue-700 underline text-right" href="#">contact sponsor</a>
             </div>
             <p id="footer-note" class="text-xs text-slate-500 min-h-4" aria-live="polite"></p>
         </form>
@@ -310,14 +469,37 @@
     </div>
 
     <div id="export-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
-        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="export-title">
             <div class="flex justify-between items-center">
-                <h3 id="export-title" class="text-lg font-bold text-slate-900">Export this listing</h3>
+                <h3 id="export-title" class="text-lg font-bold text-slate-900">Export</h3>
                 <button type="button" id="export-close" class="text-slate-400 hover:text-slate-600 font-bold" aria-label="Close">✕</button>
             </div>
-            <p id="export-place" class="text-sm font-medium text-slate-800"></p>
-            <input id="export-url" type="text" readonly class="w-full border border-slate-300 rounded-xl p-2 text-xs bg-slate-50">
-            <div class="grid grid-cols-2 gap-2">
+            <fieldset id="export-source-fieldset" class="space-y-2 border-0 p-0 m-0">
+                <legend class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Export</legend>
+                <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                    <input type="radio" name="export-source" value="current" class="rounded-full border-slate-300 text-blue-600" checked>
+                    <span>This one listing</span>
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                    <input type="radio" name="export-source" value="saved" class="rounded-full border-slate-300 text-blue-600">
+                    <span>Saved</span>
+                    <span id="export-count-saved" class="text-xs text-slate-500"></span>
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                    <input type="radio" name="export-source" value="visited" class="rounded-full border-slate-300 text-blue-600">
+                    <span>Visited</span>
+                    <span id="export-count-visited" class="text-xs text-slate-500"></span>
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                    <input type="radio" name="export-source" value="tour" class="rounded-full border-slate-300 text-blue-600">
+                    <span>Tour</span>
+                    <span id="export-count-tour" class="text-xs text-slate-500"></span>
+                </label>
+            </fieldset>
+            <p id="export-place" class="text-sm font-medium text-slate-800 min-h-5"></p>
+            <textarea id="export-body" readonly rows="4" class="w-full border border-slate-300 rounded-xl p-2 text-xs bg-slate-50 resize-none"></textarea>
+            <p id="export-empty-hint" class="hidden text-xs text-slate-500">Nothing in this list yet on this phone.</p>
+            <div id="export-actions" class="grid grid-cols-2 gap-2">
                 <button type="button" id="export-share" class="bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium text-sm">Share</button>
                 <button type="button" id="export-copy" class="bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Copy link</button>
                 <a id="export-messages" class="flex items-center justify-center bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Messages</a>
@@ -326,6 +508,6 @@
         </div>
     </div>
 
-    <script type="module" src="js/visitor.js?v=generic12"></script>
+    <script type="module" src="js/visitor.js?v=generic46"></script>
 </body>
 </html>

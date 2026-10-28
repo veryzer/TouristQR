@@ -12,6 +12,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="theme-color" content="#1e3a8a">
     <title>TouristQR - Admin & QR Console</title>
     <link rel="stylesheet" href="/css/app.css?v=local1">
@@ -199,6 +200,13 @@
             .category-actions button {
                 flex: 0 0 auto;
             }
+            #site-panel > section:first-child {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            #site-form .site-form-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
         }
         #app-screen > header {
             background: #f8fafc;
@@ -208,13 +216,65 @@
         .admin-section-add-sponsor { background: #f8fafc; border: 2px solid #94a3b8; }
         .admin-section-pickers { background: #fffbeb; border: 2px solid #fcd34d; }
         #sponsor-panel { background: #ecfdf5; border: 2px solid #6ee7b7; }
-        #site-panel > section:first-child { background: #f5f3ff; border: 2px solid #c4b5fd; }
+        #site-panel > section:first-child {
+            background: #f5f3ff;
+            border: 2px solid #c4b5fd;
+            min-width: 0;
+            max-width: 100%;
+            overflow-x: clip;
+        }
+        #site-form {
+            min-width: 0;
+            max-width: 100%;
+        }
+        #site-form .grid > * {
+            min-width: 0;
+        }
+        #site-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+        #site-form select,
+        #site-form textarea {
+            box-sizing: border-box;
+            max-width: 100%;
+        }
         #qr-section { background: #fdf2f8; border: 2px solid #f9a8d4; }
         #notice-composer { background: #fefce8; border: 2px solid #fde047; }
         #category-editor { background: #fff7ed; border: 2px solid #fdba74; }
         #backup-all-panel { background: #fef2f2; border: 2px solid #fca5a5; }
         #generic-qr-panel { background: #ecfeff; border: 2px solid #67e8f9; }
         #app-screen section.rounded-2xl { box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
+        .admin-section-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #64748b;
+            text-align: right;
+            line-height: 1.3;
+            max-width: 11rem;
+        }
+        .site-selector-muted {
+            position: relative;
+            opacity: 0.42;
+            filter: grayscale(0.35);
+        }
+        .site-selector-muted::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 0.75rem;
+            background: repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 5px,
+                rgb(100 116 139 / 0.12) 5px,
+                rgb(100 116 139 / 0.12) 10px
+            );
+            pointer-events: none;
+        }
+        .site-selector-muted label,
+        .site-selector-muted select {
+            pointer-events: none;
+        }
         @keyframes save-glow-red {
             0%, 100% {
                 background-color: #dc2626;
@@ -242,6 +302,106 @@
         }
         .save-btn-saved:hover {
             background-color: #15803d !important;
+        }
+        .admin-info-section {
+            position: relative;
+        }
+        .admin-section-info {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 2;
+            width: 1.375rem;
+            height: 1.375rem;
+            border-radius: 9999px;
+            border: 1px solid #94a3b8;
+            background: #fff;
+            color: #64748b;
+            font-size: 0.7rem;
+            font-weight: 700;
+            font-style: italic;
+            font-family: Georgia, "Times New Roman", serif;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+        }
+        .admin-section-info:hover {
+            background: #f8fafc;
+            color: #334155;
+        }
+        .admin-inline-info {
+            position: static;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            margin-left: 0.25rem;
+        }
+        .backup-responsibility-callout {
+            flex: 1 1 14rem;
+            max-width: 28rem;
+            margin: 0;
+            padding: 0.65rem 0.75rem;
+            border-radius: 0.75rem;
+            border: 1px solid #fcd34d;
+            background: #fffbeb;
+            color: #78350f;
+            font-size: 0.75rem;
+            line-height: 1.45;
+        }
+        #admin-info-callout {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 1.25rem;
+            padding-top: max(1.25rem, env(safe-area-inset-top));
+            background: rgb(15 23 42 / 0.45);
+        }
+        #admin-info-callout.hidden {
+            display: none !important;
+        }
+        #admin-info-callout-panel {
+            position: relative;
+            width: 100%;
+            max-width: 22rem;
+            max-height: min(80vh, 32rem);
+            overflow-y: auto;
+            background: #fff;
+            border-radius: 1rem;
+            padding: 1rem 1.1rem 1.1rem;
+            box-shadow: 0 20px 40px rgb(0 0 0 / 0.18);
+            border: 2px solid #cbd5e1;
+        }
+        #admin-info-callout-panel h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 2rem 0.5rem 0;
+        }
+        #admin-info-callout-panel ul {
+            margin: 0;
+            padding-left: 1.1rem;
+            font-size: 0.8125rem;
+            color: #475569;
+            line-height: 1.45;
+        }
+        #admin-info-callout-panel li + li {
+            margin-top: 0.45rem;
+        }
+        #admin-info-callout-close {
+            position: absolute;
+            top: 0.65rem;
+            right: 0.75rem;
+            border: 0;
+            background: none;
+            color: #94a3b8;
+            font-size: 1.25rem;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" async></script>
@@ -276,6 +436,7 @@
                 <p id="sponsor-notice" class="hidden text-sm text-slate-700 mt-3 whitespace-pre-wrap"></p>
             </div>
             <div class="header-actions flex gap-2 flex-wrap justify-end">
+                <a href="docs/master-admin-manual.html" target="_blank" rel="noopener" class="admin-only text-xs bg-white hover:bg-slate-50 text-slate-800 px-3 py-2 rounded-xl font-medium border border-slate-300">Master admin manual</a>
                 <a href="signup.html" class="admin-only text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-medium">Phone signup</a>
                 <button type="button" id="view-live" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-medium border border-blue-200">View live site →</button>
                 <button type="button" id="sign-out" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-xl font-medium border border-slate-300">Sign out</button>
@@ -284,18 +445,24 @@
 
         <p id="admin-status" class="text-sm rounded-xl px-3 py-2 border hidden" role="alert" aria-live="polite"></p>
 
-        <section id="catalogue-panel" class="admin-only admin-section-catalogue p-6 rounded-2xl shadow-sm">
-            <h2 class="font-bold text-slate-900">Catalogue</h2>
+        <section id="catalogue-panel" class="admin-only admin-section-catalogue admin-info-section p-6 rounded-2xl shadow-sm">
+            <button type="button" class="admin-section-info" data-admin-info="catalogue" aria-label="Help for Catalogue">i</button>
+            <h2 class="font-bold text-slate-900 pr-8">Catalogue</h2>
             <p id="catalogue-totals" class="text-sm text-slate-600 mt-1"></p>
             <div class="flex flex-wrap gap-2 mt-3">
                 <button type="button" id="work-sites" class="text-xs px-3 py-2 rounded-xl font-medium bg-slate-800 text-white">Sites</button>
                 <button type="button" id="work-shops" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Shops</button>
+                <button type="button" id="work-restaurants" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Restaurants</button>
                 <button type="button" id="work-exhibits" class="text-xs px-3 py-2 rounded-xl font-medium bg-white border border-slate-300 text-slate-700">Exhibits</button>
             </div>
         </section>
 
         <section id="new-sponsor-panel" class="admin-only admin-section-add-sponsor p-6 rounded-2xl shadow-sm space-y-3">
-            <h2 id="add-sponsor-title" class="font-bold text-slate-900">Add site sponsor</h2>
+            <div class="flex flex-wrap justify-between items-center gap-2">
+                <h2 id="add-sponsor-title" class="font-bold text-slate-900">Add site sponsor</h2>
+                <button type="button" id="toggle-add-sponsor" class="text-xs bg-white border border-slate-300 text-slate-800 px-3 py-1.5 rounded-xl font-medium">Add sponsor</button>
+            </div>
+            <div id="add-sponsor-body" class="hidden space-y-3">
             <form id="new-sponsor" class="space-y-3">
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-sponsor-name">Business name</label>
@@ -329,6 +496,7 @@
                 </div>
                 <button type="submit" id="add-sponsor-button" class="bg-slate-800 text-white text-xs font-medium px-4 py-2 rounded-xl">Add sponsor and login</button>
             </form>
+            </div>
         </section>
 
         <section id="sponsor-picker" class="admin-only admin-section-pickers p-6 rounded-2xl shadow-sm space-y-3">
@@ -367,12 +535,33 @@
             </div>
         </section>
 
-        <section id="sponsor-panel" class="hidden p-6 rounded-2xl shadow-sm space-y-4">
-            <div class="flex justify-between gap-3 items-start">
-                <h2 id="sponsor-heading" class="font-bold text-slate-900">Sponsor</h2>
-                <span id="sponsor-status-pill" class="text-xs text-slate-500 shrink-0"></span>
+        <section id="restaurant-sponsor-picker" class="admin-only admin-section-pickers p-6 rounded-2xl shadow-sm space-y-3">
+            <h2 class="font-bold text-slate-900">Restaurant sponsors</h2>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input id="sort-restaurant-by-expiry" type="checkbox" class="rounded expiry-sort">
+                Sort by expiry (soonest public listing end first)
+            </label>
+            <div>
+                <label for="restaurant-sponsor-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select sponsor</label>
+                <select id="restaurant-sponsor-selector" class="border rounded-xl p-2 text-sm w-full"></select>
             </div>
+        </section>
+
+        <section id="sponsor-panel" class="hidden admin-info-section p-6 rounded-2xl shadow-sm space-y-4">
+            <button type="button" class="admin-section-info" data-admin-info="sponsor" aria-label="Help for Sponsor profile">i</button>
+            <div class="flex justify-between gap-3 items-start pr-6">
+                <div class="flex flex-wrap items-center gap-2 min-w-0">
+                    <h2 id="sponsor-heading" class="font-bold text-slate-900">Sponsor</h2>
+                    <button type="button" id="sponsor-edit-profile" class="hidden text-xs bg-white border border-slate-300 text-slate-800 px-3 py-1.5 rounded-xl font-medium">Edit profile</button>
+                </div>
+                <div class="shrink-0 text-right space-y-1">
+                    <p id="sponsor-section-label" class="admin-section-label">Site Sponsor profile</p>
+                    <span id="sponsor-status-pill" class="text-xs text-slate-500 block"></span>
+                </div>
+            </div>
+            <div id="sponsor-profile-collapsible" class="hidden space-y-4">
             <p id="sponsor-report" class="text-sm text-slate-600"></p>
+            <div id="sponsor-profile-body" class="space-y-4">
             <form id="sponsor-form" class="space-y-3">
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1" for="sponsor-name">Business name</label>
@@ -411,7 +600,7 @@
                 </div>
                 <div id="exhibit-sponsor-logo-panel" class="hidden space-y-2 border border-slate-200 rounded-xl p-3">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Club logo (optional)</p>
-                    <p class="help-note">Shown on public exhibit listings where Navigate usually appears. Pick or paste a picture — it is saved under this sponsor automatically (no filename to enter). JPEG, PNG, GIF, or WebP; resized to a thumbnail on upload.</p>
+                    <p class="help-note">Shown on public exhibit listings where Navigate usually appears. Pick or paste a picture — it is saved under this sponsor automatically (no filename to enter). JPEG, PNG, GIF, or WebP. <strong>Club logo: 128×128</strong> (square); larger files are resized on upload.</p>
                     <div class="flex flex-wrap items-center gap-3">
                         <button type="button" id="sponsor-logo-preview-btn" class="hidden shrink-0 rounded-xl border border-slate-200 bg-white p-1" title="Click to replace the logo">
                             <img id="sponsor-logo-preview" alt="" class="w-16 h-16 object-contain">
@@ -447,27 +636,42 @@
                 <button type="submit" id="save-sponsor" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Save sponsor</button>
                 <p id="sponsor-save-status" class="text-xs rounded-xl px-3 py-2 border hidden" role="status" aria-live="polite"></p>
             </form>
-            <div class="flex flex-wrap gap-2 pt-2 border-t">
-                <button type="button" id="backup-sponsor" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Backup this sponsor</button>
-                <label class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl cursor-pointer">
-                    Restore this sponsor
-                    <input id="restore-sponsor-file" type="file" accept="application/json,.json" class="hidden">
-                </label>
-                <button type="button" id="delete-sponsor" class="admin-only text-xs bg-white border border-red-300 text-red-800 px-3 py-2 rounded-xl">Delete this sponsor</button>
+            <div class="space-y-2 pt-2 border-t">
+                <p class="text-xs font-semibold text-slate-700">
+                    Data backup
+                    <button type="button" class="admin-section-info admin-inline-info" data-admin-info="sponsorData" aria-label="Help for sponsor data backup">i</button>
+                </p>
+                <div class="flex flex-wrap gap-3 items-start">
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="backup-sponsor" class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl">Download my data</button>
+                        <label class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl cursor-pointer">
+                            <span id="restore-sponsor-label">Restore my data</span>
+                            <input id="restore-sponsor-file" type="file" accept="application/json,.json" class="hidden">
+                        </label>
+                        <button type="button" id="delete-sponsor" class="admin-only text-xs bg-white border border-red-300 text-red-800 px-3 py-2 rounded-xl">Delete this sponsor</button>
+                    </div>
+                    <p id="sponsor-backup-callout" class="backup-responsibility-callout" role="note">You are responsible for your own backups. Use Download my data from time to time and keep the JSON file somewhere safe—it includes your listings and photographs.</p>
+                </div>
+                <p id="sponsor-backup-download-note" class="text-xs text-slate-500 sponsor-backup-responsibility">You are responsible for your own backups. Download my data from time to time and keep the file somewhere safe (computer, USB, or cloud). The JSON file includes your profile, your listings, your listing photographs, and your club logo when one is set—packed inside the file, not as separate .jpg downloads.</p>
+                <p class="text-xs text-slate-500">Restore my data puts your saved profile, listings, photographs, and logo back on the server from that file. It replaces your current records only; other sponsors are unchanged. Login name and password are not in this file—contact the site admin if you need account recovery.</p>
+                <p class="admin-only text-xs text-slate-500">Delete this sponsor removes the sponsor, their login, all their listings, photograph files in images, and frees any Generic QR number they used.</p>
             </div>
-            <p class="text-xs text-slate-500">Restore this sponsor replaces only this sponsor’s records. Delete this sponsor removes the sponsor, their login, all their listings, photograph files in images, and frees any Generic QR number they used.</p>
-            <div id="site-nav-wrap" class="place-listing-only pt-2 border-t">
-                <button type="button" id="new-site" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl font-medium w-full">+ Next new site</button>
+            </div>
             </div>
         </section>
 
         <section id="site-panel" class="hidden space-y-6">
-            <section class="p-6 rounded-2xl shadow-sm space-y-4">
-                <h2 id="site-form-title" class="font-bold text-slate-900 border-b pb-2">Add / modify historic site</h2>
+            <section id="site-page-section" class="admin-info-section p-6 rounded-2xl shadow-sm space-y-4">
+                <button type="button" class="admin-section-info" data-admin-info="pageData" aria-label="Help for Page Data">i</button>
+                <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-3 gap-y-2 items-center border-b pb-2 pr-8">
+                    <h2 id="site-form-title" class="font-bold text-slate-900 min-w-0 sm:justify-self-start">Add / modify historic site</h2>
+                    <button type="button" id="new-site" class="place-listing-only hidden bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2 rounded-xl font-medium whitespace-nowrap justify-self-center">+ Next new site</button>
+                    <p id="site-section-label" class="admin-section-label sm:justify-self-end sm:text-right">Site Page Data</p>
+                </div>
                 <p id="site-form-intro" class="help-note shop-only hidden">This is the listing visitors see after they scan the QR code. Edit the shop name, description, address, website, and photographs here, then save.</p>
                 <form id="site-form" class="space-y-4" novalidate>
                     <div id="site-selector-wrap" class="place-listing-only">
-                        <label for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site</label>
+                        <label id="site-selector-label" for="site-selector" class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Select site</label>
                         <select id="site-selector" class="border rounded-xl p-2 text-sm w-full"></select>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -484,7 +688,7 @@
                             <p class="help-note shop-only sponsor-id-note hidden">When you save, the public address is made from the shop name (lowercase, dashes between words). It cannot be changed later.</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="site-form-grid grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <p class="block text-xs font-semibold text-slate-600 mb-1">Sponsor</p>
                             <p id="site-sponsor-label" class="text-sm text-slate-800 py-2"></p>
@@ -500,7 +704,7 @@
                         Year is approximate
                     </label>
                     <p id="computed-status" class="text-xs text-slate-500"></p>
-                    <div class="grid grid-cols-3 gap-4">
+                    <div class="site-form-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCategory">Category</label>
                             <select id="siteCategory" class="w-full border rounded-xl p-2 text-sm bg-white"></select>
@@ -561,7 +765,7 @@
                         <input type="tel" id="sitePhone" placeholder="03 5221 1234" class="w-full border rounded-xl p-2 text-sm">
                         <p class="help-note">Shown above Scan on the public page as a tap-to-call link on mobile phones.</p>
                     </div>
-                    <div class="place-listing-only grid grid-cols-3 gap-4">
+                    <div class="place-listing-only site-form-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteCountry">Country</label>
                             <input type="text" id="siteCountry" class="w-full border rounded-xl p-2 text-sm">
@@ -575,7 +779,7 @@
                             <input type="text" id="siteCity" class="w-full border rounded-xl p-2 text-sm">
                         </div>
                     </div>
-                    <div class="heritage-only grid grid-cols-3 gap-4">
+                    <div class="heritage-only site-form-grid grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1" for="siteYearStart">Year from</label>
                             <input type="number" id="siteYearStart" class="w-full border rounded-xl p-2 text-sm">
@@ -601,21 +805,27 @@
                                 </label>
                             </div>
                         </div>
-                        <p class="help-note heritage-only">A new photograph gets the next reference for that sponsor, such as 1-009.jpg. JPEG, PNG, GIF, and WebP are accepted. On a PC you can copy a picture (e.g. a screenshot) and use Paste image from clipboard. Replacing a photograph keeps its code. Removed codes are not reused. Captions are optional.</p>
-                        <p class="help-note exhibit-only hidden">Mark one photograph as Advertising photo to show it in that section on the public page. Captions are optional.</p>
-                        <p class="help-note shop-only hidden">Add photographs for the public gallery (up to 20). JPEG, PNG, GIF, and WebP are accepted. On a PC, copy an image and use Paste image from clipboard. Mark one as Shop front to show it in that section. Captions are optional. Replacing a file keeps its code; removed codes are not reused.</p>
+                        <p class="help-note photo-size-guide"><strong>Public image sizes:</strong> Normal gallery — <strong>4∶3</strong>, max <strong>1200×900</strong>. Special strip (Historical, shop front, or advertising) — <strong>16∶9</strong>, max <strong>1200×675</strong>. Exhibit club logo — <strong>128×128</strong> (on Sponsor profile).</p>
+                        <p class="help-note heritage-only">A new photograph gets the next reference for that sponsor, such as 1-009.jpg. JPEG, PNG, GIF, and WebP are accepted. On a PC you can copy a picture (e.g. a screenshot) and use Paste image from clipboard. Use Move up / Move down to change the public gallery order, then save the site. Mark one as Historical for the section at the bottom of the public page. Only one Historical per listing. Replacing a photograph keeps its code. Removed codes are not reused. Captions are optional.</p>
+                        <p class="help-note exhibit-only hidden">Use Move up / Move down to change the public gallery order, then save the exhibit. Mark one photograph as Advertising photo for the section at the bottom of the public page. Only one Advertising photo per listing. Captions are optional.</p>
+                        <p id="shop-photo-help" class="help-note shop-only hidden">Add photographs for the public gallery (up to 20). JPEG, PNG, GIF, and WebP are accepted. On a PC, copy an image and use Paste image from clipboard. Use Move up / Move down to change the public gallery order, then save the listing. Mark one as Shop front to show it in that section. Only one Shop front per listing. Captions are optional. Replacing a file keeps its code; removed codes are not reused.</p>
+                        <p class="help-note restaurant-only hidden">Add photographs for the public gallery (up to 20). Mark exactly one as Shop front — it appears in its own section at the bottom of the public page (only one Shop front, Advertising photo, or Historical per listing). Captions are optional.</p>
                         <p id="photo-add-status" class="text-xs rounded-xl px-3 py-2 border hidden" aria-live="off"></p>
                         <div id="photo-rows" class="space-y-3"></div>
                     </div>
 
-                    <button type="submit" id="save-site-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm">Save site</button>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <button type="submit" id="save-site-button" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm">Save site</button>
+                        <button type="button" id="cancel-new-listing" class="hidden flex-1 sm:flex-none sm:min-w-[6.5rem] bg-white border border-slate-300 text-slate-700 font-medium py-2.5 px-4 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+                    </div>
                     <p id="site-save-status" class="text-sm rounded-xl px-3 py-2 border hidden" role="status" aria-live="polite"></p>
                     <button type="button" id="delete-site" class="w-full bg-white border border-slate-300 text-slate-700 font-medium py-2.5 rounded-xl text-sm">Delete site</button>
                 </form>
             </section>
 
-            <section id="qr-section" class="p-6 rounded-2xl shadow-sm space-y-4 text-center">
-                <h2 id="qr-section-title" class="font-bold text-slate-900 text-left border-b pb-2">QR code for this site</h2>
+            <section id="qr-section" class="admin-info-section p-6 rounded-2xl shadow-sm space-y-4 text-center">
+                <button type="button" class="admin-section-info" data-admin-info="qr" aria-label="Help for QR code">i</button>
+                <h2 id="qr-section-title" class="font-bold text-slate-900 text-left border-b pb-2 pr-8">QR code for this site</h2>
                 <div class="flex flex-col items-center space-y-3">
                     <canvas id="qr-canvas" class="w-full max-w-[280px] h-auto bg-white shadow-sm"></canvas>
                     <p id="qr-target-url" class="text-xs text-slate-500 font-mono break-all">Choose a site, or enter a site id, to show its QR code.</p>
@@ -653,16 +863,25 @@
             </div>
         </section>
 
-        <section id="backup-all-panel" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
-            <h2 class="font-bold text-slate-900">Backup all</h2>
-            <div class="flex flex-wrap gap-2">
-                <button type="button" id="backup-all" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Backup all</button>
-                <label class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl cursor-pointer">
-                    Restore all
-                    <input id="restore-all-file" type="file" accept="application/json,.json" class="hidden">
-                </label>
+        <section id="backup-all-panel" class="admin-only admin-info-section p-6 rounded-2xl shadow-sm space-y-3">
+            <button type="button" class="admin-section-info" data-admin-info="backupCatalogue" aria-label="Help for catalogue backup">i</button>
+            <h2 class="font-bold text-slate-900 pr-8">Backup &amp; restore</h2>
+            <p class="help-note">Your web host should keep its own server snapshots. These buttons export or restore TouristQR <strong>catalogue data</strong> as a JSON file you can store separately—for audits, migration, or crisis recovery.</p>
+            <div class="space-y-2">
+                <p class="text-xs font-semibold text-slate-700">Catalogue backup</p>
+                <div class="flex flex-wrap gap-3 items-start">
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="backup-all" class="text-xs bg-slate-800 text-white px-3 py-2 rounded-xl">Download catalogue backup</button>
+                        <label class="text-xs bg-white border border-slate-300 px-3 py-2 rounded-xl cursor-pointer">
+                            Restore catalogue backup
+                            <input id="restore-all-file" type="file" accept="application/json,.json" class="hidden">
+                        </label>
+                    </div>
+                    <p id="catalogue-backup-callout" class="backup-responsibility-callout" role="note">You are responsible for site-wide recovery. Ask each sponsor to download their own backup from their profile as well.</p>
+                </div>
+                <p class="text-xs text-slate-500">Includes the whole catalogue: sponsors, listings, listing photographs and club logos (packed in the JSON when on the server), logins, and site settings. Each sponsor should also download their own backup from their profile. Does not include the activity log, visitor Saved/Visited lists, or website code. Large catalogues produce a large download.</p>
+                <p class="text-xs text-slate-500">Restore catalogue backup <strong>replaces the whole live catalogue</strong> with the file—use after a bad edit or to move content onto a fresh install. It does not merge with what is already on the server.</p>
             </div>
-            <p class="text-xs text-slate-500">Restore all replaces the whole catalogue. Use it as a crisis restore, not as a merge.</p>
         </section>
 
         <section id="generic-qr-panel" class="admin-only p-6 rounded-2xl shadow-sm space-y-3">
@@ -684,7 +903,15 @@
             <div id="generic-print-preview"></div>
             <div id="generic-print-sheet"></div>
         </section>
+
+        <div id="admin-info-callout" class="hidden" role="presentation">
+            <div id="admin-info-callout-panel" role="dialog" aria-modal="true" aria-labelledby="admin-info-callout-title">
+                <button type="button" id="admin-info-callout-close" aria-label="Close help">✕</button>
+                <h3 id="admin-info-callout-title"></h3>
+                <ul id="admin-info-callout-list"></ul>
+            </div>
+        </div>
     </div>
-    <script type="module" src="js/admin.js?v=admin33"></script>
+    <script type="module" src="js/admin.js?v=admin50"></script>
 </body>
 </html>

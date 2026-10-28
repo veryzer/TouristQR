@@ -314,6 +314,11 @@ export function photosInCodeOrder(photos) {
   return [...(photos || [])].sort((a, b) => comparePhotoCodes(a.code, b.code));
 }
 
+/** Gallery order as saved on the listing (admin can reorder; codes stay fixed). */
+export function photosInDisplayOrder(photos) {
+  return (photos || []).filter((photo) => photo && photo.code);
+}
+
 export function slugifyListingId(value) {
   return String(value || "")
     .toLowerCase()

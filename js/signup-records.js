@@ -1,7 +1,10 @@
-import { addMonths, extraMonthsOf, genericListingTaken, MAX_PHOTOS, nextGenericCode, nextPhotoCode, normalizePublicHttpUrl, parseGenericCode, parseISODate } from "./model.js";
+import { extraMonthsOf, genericListingTaken, MAX_PHOTOS, nextGenericCode, nextPhotoCode, normalizePublicHttpUrl, parseGenericCode } from "./model.js";
 import { extFromDataUrl } from "./photo-file.js";
 import { genericPublicUrl, publicBaseUrl } from "./config.js";
 import { normaliseUsername, validUsername } from "./auth.js";
+import { welcomeEmail } from "./welcome-email.js";
+
+export { welcomeEmail };
 
 function fail(message) {
   const error = new Error(message);
@@ -21,18 +24,6 @@ function todayISO(now = new Date()) {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function formatDay(iso) {
-  const date = parseISODate(iso);
-  if (!date) return iso || "";
-  return date.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function toIsoDate(date) {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 export function listingKindFromType(type) {
@@ -66,74 +57,6 @@ function uniqueOrgId(preferred, organisations, listingId) {
   const base = slugify(preferred) || listingId;
   if (!(organisations || []).some((org) => org.id === base)) return base;
   return listingId;
-}
-
-export function welcomeEmail({
-  contactName,
-  businessName,
-  listingKind,
-  username,
-  password,
-  publicUrl,
-  genericLabel,
-  subscribedAt,
-  extraMonths = 0,
-  loginUrl,
-}) {
-  const first = String(contactName || "").trim() || "there";
-  const business = String(businessName || "").trim() || "your listing";
-  const kindWord = listingKind === "restaurant" ? "restaurant" : listingKind === "shop" ? "shop" : "site";
-  const start = parseISODate(subscribedAt) || new Date();
-  const publicUntil = addMonths(start, 12 + extraMonths);
-  const graceUntil = addMonths(start, 13 + extraMonths);
-  const adminUrl = loginUrl || `${publicBaseUrl.replace(/\/?$/, "/")}admin.html`;
-  const subject = `Welcome to TouristQR — ${business}`;
-  const text = [
-    `Hello ${first},`,
-    "",
-    `${business} is now listed on TouristQR as a ${kindWord}.`,
-    "",
-    "Your public page (tap or scan this QR code):",
-    publicUrl,
-    "",
-    "Sign in to add photos, edit the wording, and keep the listing up to date:",
-    adminUrl,
-    `Login name: ${username}`,
-    `Login password: ${password}`,
-    "You can change the password after you sign in.",
-    "",
-    `Sponsorship started ${formatDay(toIsoDate(start))}.`,
-    `The listing stays on the public site until ${formatDay(toIsoDate(publicUntil))}, then has one extra grace month (until ${formatDay(toIsoDate(graceUntil))}) before it is archived.`,
-    extraMonths ? `This already includes ${extraMonths} extra month${extraMonths === 1 ? "" : "s"} from referrals.` : "",
-    "",
-    "Referral offer: for every new business that names you when they sign up, you receive 1 extra month of public listing.",
-    `They can give us your code ${genericLabel} or your login name ${username}.`,
-    "",
-    "TouristQR",
-    publicBaseUrl,
-  ].filter((line) => line !== "").join("\n");
-  const html = `<p>Hello ${escapeHtml(first)},</p>
-<p><strong>${escapeHtml(business)}</strong> is now listed on TouristQR as a ${escapeHtml(kindWord)}.</p>
-<p>Your public page — tap the QR code or open this link:<br>
-<a href="${escapeHtml(publicUrl)}">${escapeHtml(publicUrl)}</a></p>
-<p><a href="${escapeHtml(publicUrl)}"><img src="cid:qr@touristqr.com" alt="QR code for ${escapeHtml(genericLabel)}" width="220" height="220" style="width:220px;height:220px;border:0;"></a></p>
-<p>Sign in to add photographs, edit the wording, and keep the listing up to date:<br>
-<a href="${escapeHtml(adminUrl)}">${escapeHtml(adminUrl)}</a><br>
-Login name: <strong>${escapeHtml(username)}</strong><br>
-Login password: <strong>${escapeHtml(password)}</strong><br>
-You can change the password after you sign in.</p>
-<p>Sponsorship started ${escapeHtml(formatDay(toIsoDate(start)))}. The listing stays on the public site until <strong>${escapeHtml(formatDay(toIsoDate(publicUntil)))}</strong>, then has one extra grace month (until ${escapeHtml(formatDay(toIsoDate(graceUntil)))}) before it is archived.${extraMonths ? ` This already includes ${extraMonths} extra month${extraMonths === 1 ? "" : "s"} from referrals.` : ""}</p>
-<p><strong>Referral offer:</strong> for every new business that names you when they sign up, you receive 1 extra month of public listing. They can give us your code <strong>${escapeHtml(genericLabel)}</strong> or your login name <strong>${escapeHtml(username)}</strong>.</p>
-<p>TouristQR<br><a href="${escapeHtml(publicBaseUrl)}">${escapeHtml(publicBaseUrl)}</a></p>`;
-  return { subject, text, html };
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export function buildSignupRecords({ body, organisations, sites, users, now = new Date() }) {

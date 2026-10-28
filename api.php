@@ -1,14 +1,45 @@
 <?php
 declare(strict_types=1);
 
+$route = (string) ($_GET["r"] ?? "");
+$method = $_SERVER["REQUEST_METHOD"] ?? "GET";
+
+if ($route === "tts" && $method === "GET") {
+    $text = trim((string) ($_GET["text"] ?? ""));
+    if ($text === "" || mb_strlen($text) > 500) {
+        http_response_code(400);
+        header("Content-Type: text/plain; charset=utf-8");
+        echo "Missing or oversized text.";
+        exit;
+    }
+    $google = "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-AU&q="
+        . rawurlencode($text);
+    $ctx = stream_context_create([
+        "http" => [
+            "header" => "User-Agent: Mozilla/5.0 (compatible; TouristQR/1.0)\r\n",
+            "timeout" => 15,
+            "ignore_errors" => true,
+        ],
+    ]);
+    $audio = @file_get_contents($google, false, $ctx);
+    if (!is_string($audio) || $audio === "") {
+        http_response_code(502);
+        header("Content-Type: text/plain; charset=utf-8");
+        echo "Speech audio is unavailable.";
+        exit;
+    }
+    header("Content-Type: audio/mpeg");
+    header("Cache-Control: public, max-age=86400");
+    echo $audio;
+    exit;
+}
+
 header("Cache-Control: no-store");
 header("Content-Type: application/json; charset=utf-8");
 
 $root = __DIR__;
 $dataDir = $root . DIRECTORY_SEPARATOR . "data";
 $imageDir = $root . DIRECTORY_SEPARATOR . "images";
-$route = (string) ($_GET["r"] ?? "");
-$method = $_SERVER["REQUEST_METHOD"] ?? "GET";
 
 $https = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off")
     || (isset($_SERVER["HTTP_X_FORWARDED_PROTO"]) && $_SERVER["HTTP_X_FORWARDED_PROTO"] === "https");
@@ -268,6 +299,48 @@ function is_listed(array $site, array $org): bool {
         && subscription_state((string) ($site["createdAt"] ?? ""), $extra) !== "lapsed";
 }
 
+function public_site_url(string $siteId): string {
+    if (preg_match('/^generic0*(\d+)$/i', $siteId, $match)) {
+        $digits = str_pad((string) max(1, (int) $match[1]), 4, "0", STR_PAD_LEFT);
+        return "https://touristqr.com/Generic{$digits}";
+    }
+    return "https://touristqr.com/?site=" . rawurlencode($siteId);
+}
+
+function emit_sitemap_xml(): void {
+    $sites = read_json("sites.json");
+    $orgs = read_json("organisations.json");
+    $today = gmdate("Y-m-d");
+    header("Content-Type: application/xml; charset=UTF-8");
+    header("Cache-Control: public, max-age=3600");
+    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    echo "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n";
+    echo "  <url><loc>https://touristqr.com/</loc><changefreq>daily</changefreq><priority>1.0</priority><lastmod>{$today}</lastmod></url>\n";
+    foreach ($sites as $site) {
+        if (!is_array($site)) {
+            continue;
+        }
+        $id = (string) ($site["id"] ?? "");
+        if ($id === "") {
+            continue;
+        }
+        $org = find_org($orgs, (string) ($site["organisationId"] ?? ""));
+        if (!$org || !is_listed($site, $org)) {
+            continue;
+        }
+        $loc = htmlspecialchars(public_site_url($id), ENT_XML1 | ENT_QUOTES, "UTF-8");
+        $lastmod = (string) ($site["updatedAt"] ?? $site["createdAt"] ?? $today);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}/', $lastmod)) {
+            $lastmod = $today;
+        } else {
+            $lastmod = substr($lastmod, 0, 10);
+        }
+        echo "  <url><loc>{$loc}</loc><changefreq>weekly</changefreq><priority>0.8</priority><lastmod>{$lastmod}</lastmod></url>\n";
+    }
+    echo "</urlset>\n";
+    exit;
+}
+
 function format_generic_code(int $number): ?array {
     if ($number < 1 || $number > 999999) {
         return null;
@@ -469,24 +542,70 @@ function add_months_iso(string $iso, int $months): string {
     return $from->format("Y-m-d");
 }
 
+function content_path(string $name): string {
+    global $root;
+    return $root . DIRECTORY_SEPARATOR . "content" . DIRECTORY_SEPARATOR . $name;
+}
+
+function read_welcome_signup_template(): array {
+    $path = content_path("welcome-signup-email.json");
+    if (!is_readable($path)) {
+        send_json(500, ["error" => "Could not read welcome email template."]);
+    }
+    $decoded = json_decode((string) file_get_contents($path), true);
+    if (!is_array($decoded)) {
+        send_json(500, ["error" => "Could not read welcome email template."]);
+    }
+    return $decoded;
+}
+
+function render_message_template(string $template, array $vars, bool $htmlEscape): string {
+    $out = $template;
+    foreach ($vars as $key => $value) {
+        $text = $htmlEscape
+            ? htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8")
+            : (string) $value;
+        $out = str_replace("{{" . $key . "}}", $text, $out);
+    }
+    return $out;
+}
+
+function welcome_email_vars(array $info): array {
+    $first = trim((string) ($info["contactName"] ?? "")) !== "" ? trim((string) $info["contactName"]) : "there";
+    $business = trim((string) ($info["businessName"] ?? "")) !== "" ? trim((string) $info["businessName"]) : "your listing";
+    $kindWord = (string) ($info["listingKind"] ?? "site");
+    $extraMonths = (int) ($info["extraMonths"] ?? 0);
+    $publicUntil = add_months_iso($info["subscribedAt"], 12 + $extraMonths);
+    $graceUntil = add_months_iso($info["subscribedAt"], 13 + $extraMonths);
+    $adminUrl = "https://touristqr.com/admin.html";
+    $suffix = $extraMonths > 0
+        ? " This already includes {$extraMonths} extra month" . ($extraMonths === 1 ? "" : "s") . " from referrals."
+        : "";
+    return [
+        "contactFirstName" => $first,
+        "businessName" => $business,
+        "kindWord" => $kindWord,
+        "publicUrl" => (string) ($info["publicUrl"] ?? ""),
+        "adminUrl" => $adminUrl,
+        "username" => (string) ($info["username"] ?? ""),
+        "password" => (string) ($info["password"] ?? ""),
+        "subscribedAtFormatted" => format_day_iso($info["subscribedAt"]),
+        "publicUntilFormatted" => format_day_iso($publicUntil),
+        "graceUntilFormatted" => format_day_iso($graceUntil),
+        "extraMonthsSuffix" => $suffix,
+        "genericLabel" => (string) ($info["genericLabel"] ?? ""),
+        "publicBaseUrl" => "https://touristqr.com/",
+    ];
+}
+
 function welcome_email(array $info): array {
-    $first = $info["contactName"] !== "" ? $info["contactName"] : "there";
-    $business = $info["businessName"];
-    $kindWord = $info["listingKind"];
-    $publicUntil = add_months_iso($info["subscribedAt"], 12 + (int) $info["extraMonths"]);
-    $graceUntil = add_months_iso($info["subscribedAt"], 13 + (int) $info["extraMonths"]);
-    $loginUrl = "https://touristqr.com/admin.html";
-    $subject = "Welcome to TouristQR — {$business}";
-    $text = "Hello {$first},\n\n{$business} is now listed on TouristQR as a {$kindWord}.\n\nYour public page (tap or scan this QR code):\n{$info["publicUrl"]}\n\nSign in to add photos, edit the wording, and keep the listing up to date:\n{$loginUrl}\nLogin name: {$info["username"]}\nLogin password: {$info["password"]}\nYou can change the password after you sign in.\n\nSponsorship started " . format_day_iso($info["subscribedAt"]) . ".\nThe listing stays on the public site until " . format_day_iso($publicUntil) . ", then has one extra grace month (until " . format_day_iso($graceUntil) . ") before it is archived.\n\nReferral offer: for every new business that names you when they sign up, you receive 1 extra month of public listing.\nThey can give us your code {$info["genericLabel"]} or your login name {$info["username"]}.\n\nTouristQR\nhttps://touristqr.com/\n";
-    $html = "<p>Hello " . htmlspecialchars($first) . ",</p>"
-        . "<p><strong>" . htmlspecialchars($business) . "</strong> is now listed on TouristQR as a " . htmlspecialchars($kindWord) . ".</p>"
-        . "<p>Your public page — tap the QR code or open this link:<br><a href=\"" . htmlspecialchars($info["publicUrl"]) . "\">" . htmlspecialchars($info["publicUrl"]) . "</a></p>"
-        . "<p><a href=\"" . htmlspecialchars($info["publicUrl"]) . "\"><img src=\"cid:qr@touristqr.com\" alt=\"QR code for " . htmlspecialchars($info["genericLabel"]) . "\" width=\"220\" height=\"220\" style=\"width:220px;height:220px;border:0;\"></a></p>"
-        . "<p>Sign in to add photographs, edit the wording, and keep the listing up to date:<br><a href=\"{$loginUrl}\">{$loginUrl}</a><br>Login name: <strong>" . htmlspecialchars($info["username"]) . "</strong><br>Login password: <strong>" . htmlspecialchars($info["password"]) . "</strong><br>You can change the password after you sign in.</p>"
-        . "<p>Sponsorship started " . htmlspecialchars(format_day_iso($info["subscribedAt"])) . ". The listing stays on the public site until <strong>" . htmlspecialchars(format_day_iso($publicUntil)) . "</strong>, then has one extra grace month (until " . htmlspecialchars(format_day_iso($graceUntil)) . ") before it is archived.</p>"
-        . "<p><strong>Referral offer:</strong> for every new business that names you when they sign up, you receive 1 extra month of public listing. They can give us your code <strong>" . htmlspecialchars($info["genericLabel"]) . "</strong> or your login name <strong>" . htmlspecialchars($info["username"]) . "</strong>.</p>"
-        . "<p>TouristQR<br><a href=\"https://touristqr.com/\">https://touristqr.com/</a></p>";
-    return ["subject" => $subject, "text" => $text, "html" => $html];
+    $template = read_welcome_signup_template();
+    $vars = welcome_email_vars($info);
+    return [
+        "subject" => render_message_template((string) ($template["subject"] ?? ""), $vars, false),
+        "text" => render_message_template((string) ($template["text"] ?? ""), $vars, false),
+        "html" => render_message_template((string) ($template["html"] ?? ""), $vars, true),
+    ];
 }
 
 function detect_image_upload(string $binary): ?array {
@@ -731,6 +850,23 @@ function apply_restore(array $currentOrgs, array $currentSites, array $backup, a
     return ["organisations" => $organisations, "sites" => array_merge($other, $mine)];
 }
 
+function backup_photo_file_path(array $photo): ?string {
+    global $imageDir;
+    $url = explode("?", explode("#", (string) ($photo["url"] ?? ""))[0])[0];
+    if ($url !== "" && str_starts_with($url, "images/")) {
+        $file = $imageDir . DIRECTORY_SEPARATOR . basename($url);
+        if (is_readable($file)) {
+            return $file;
+        }
+    }
+    $code = (string) ($photo["code"] ?? "");
+    if ($code === "") {
+        return null;
+    }
+    $file = $imageDir . DIRECTORY_SEPARATOR . $code . ".jpg";
+    return is_readable($file) ? $file : null;
+}
+
 function restore_photos($photos): void {
     global $imageDir;
     if (!is_array($photos)) {
@@ -741,15 +877,84 @@ function restore_photos($photos): void {
     }
     foreach ($photos as $photo) {
         $code = $photo["code"] ?? "";
-        if (!parse_photo_code($code) || empty($photo["jpeg"])) {
+        if (!parse_photo_code($code)) {
             continue;
         }
-        file_put_contents($imageDir . DIRECTORY_SEPARATOR . $code . ".jpg", base64_decode($photo["jpeg"]));
+        $dest = $imageDir . DIRECTORY_SEPARATOR . $code . ".jpg";
+        if (!empty($photo["jpeg"])) {
+            file_put_contents($dest, base64_decode((string) $photo["jpeg"]));
+            continue;
+        }
+        $dataUrl = (string) ($photo["dataUrl"] ?? "");
+        if ($dataUrl !== "" && preg_match('#^data:image/[\w+.-]+;base64,(.+)$#', $dataUrl, $match)) {
+            file_put_contents($dest, base64_decode($match[1]));
+        }
+    }
+}
+
+function read_org_logo_for_backup(array $org): ?array {
+    global $imageDir;
+    $url = explode("?", (string) ($org["logoUrl"] ?? ""))[0];
+    if ($url !== "" && str_starts_with($url, "images/")) {
+        $file = $imageDir . DIRECTORY_SEPARATOR . basename($url);
+        if (is_readable($file)) {
+            $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION) ?: "jpg");
+            return [
+                "relativeUrl" => $url,
+                "ext" => $ext,
+                "base64" => base64_encode((string) file_get_contents($file)),
+            ];
+        }
+    }
+    $stem = org_logo_stem($org);
+    foreach (["jpg", "jpeg", "png", "webp", "gif"] as $ext) {
+        $file = $imageDir . DIRECTORY_SEPARATOR . $stem . "." . $ext;
+        if (is_readable($file)) {
+            return [
+                "relativeUrl" => "images/{$stem}.{$ext}",
+                "ext" => $ext,
+                "base64" => base64_encode((string) file_get_contents($file)),
+            ];
+        }
+    }
+    return null;
+}
+
+function collect_backup_org_logos(array $orgs): array {
+    $logos = [];
+    foreach ($orgs as $org) {
+        if (!is_array($org)) {
+            continue;
+        }
+        $entry = read_org_logo_for_backup($org);
+        if (!$entry) {
+            continue;
+        }
+        $entry["organisationId"] = (string) ($org["id"] ?? "");
+        $logos[] = $entry;
+    }
+    return $logos;
+}
+
+function restore_backup_org_logos($logos): void {
+    global $imageDir;
+    if (!is_array($logos)) {
+        return;
+    }
+    if (!is_dir($imageDir)) {
+        mkdir($imageDir, 0755, true);
+    }
+    foreach ($logos as $logo) {
+        $relative = (string) ($logo["relativeUrl"] ?? "");
+        $base64 = (string) ($logo["base64"] ?? "");
+        if ($relative === "" || $base64 === "" || !str_starts_with($relative, "images/")) {
+            continue;
+        }
+        file_put_contents($imageDir . DIRECTORY_SEPARATOR . basename($relative), base64_decode($base64));
     }
 }
 
 function collect_backup_photos(array $sites): array {
-    global $imageDir, $root;
     $photos = [];
     foreach ($sites as $site) {
         foreach ($site["photos"] ?? [] as $photo) {
@@ -758,8 +963,8 @@ function collect_backup_photos(array $sites): array {
                 $photos[] = ["code" => $photo["code"], "dataUrl" => $url];
                 continue;
             }
-            $file = $imageDir . DIRECTORY_SEPARATOR . ($photo["code"] ?? "") . ".jpg";
-            if (is_readable($file)) {
+            $file = backup_photo_file_path($photo);
+            if ($file) {
                 $photos[] = ["code" => $photo["code"], "jpeg" => base64_encode((string) file_get_contents($file))];
             }
         }
@@ -768,6 +973,10 @@ function collect_backup_photos(array $sites): array {
 }
 
 try {
+    if ($route === "sitemap" && $method === "GET") {
+        emit_sitemap_xml();
+    }
+
     if ($route === "session" && $method === "GET") {
         send_json(200, ["user" => public_user(current_user())]);
     }
@@ -1017,6 +1226,7 @@ try {
             ];
         }
         $backup["photos"] = collect_backup_photos($backup["sites"]);
+        $backup["orgLogos"] = collect_backup_org_logos($backup["organisations"]);
         log_activity(["action" => "backup", "kind" => $backup["kind"], "by" => $user["username"]]);
         send_json(200, $backup);
     }
@@ -1034,6 +1244,7 @@ try {
             write_settings($backup["settings"]);
         }
         restore_photos($backup["photos"] ?? []);
+        restore_backup_org_logos($backup["orgLogos"] ?? []);
         log_activity(["action" => "restore", "kind" => $backup["kind"] ?? "", "by" => $user["username"]]);
         send_json(200, [
             "organisations" => orgs_for_user($next["organisations"], $user),

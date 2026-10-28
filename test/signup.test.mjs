@@ -36,6 +36,8 @@ test("signup creates a shop login listing and generic QR", () => {
   assert.equal(built.organisation.shopGroup, "shops");
   assert.equal(built.username, "cornerbooks");
   assert.match(built.email.text, /Login name: cornerbooks/);
+  assert.match(built.email.text, /Your backups/);
+  assert.match(built.email.text, /Download my data/);
   assert.match(built.email.text, /1 extra month/);
   assert.equal(built.publicUrl, "https://touristqr.com/Generic0001");
 });

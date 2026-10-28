@@ -1,6 +1,7 @@
 RewriteEngine On
 RewriteBase /
 RewriteRule ^api/([a-z-]+)$ api.php?r=$1 [QSA,L]
+RewriteRule ^sitemap\.xml$ api.php?r=sitemap [L]
 RewriteRule ^Generic([0-9]+)/?$ index.html [L]
 
 <IfModule mod_mime.c>

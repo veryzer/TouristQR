@@ -56,7 +56,12 @@ export function preparePhotoFile(file) {
 
 /** Club / sponsor logos for the public action bar (small square thumbnail). */
 export function prepareLogoFile(file, maxSize = 128) {
-  return preparePhotoFile(file).then(({ blob, contentType, ext }) => new Promise((resolve, reject) => {
+  return preparePhotoFile(file).then(({ blob, contentType, ext }) => {
+    // Canvas resize only captures the first GIF frame — keep animation intact.
+    if (ext === "gif") {
+      return { blob, contentType, ext };
+    }
+    return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
     const image = new Image();
     image.onload = () => {
@@ -78,7 +83,8 @@ export function prepareLogoFile(file, maxSize = 128) {
       reject(new Error("This file could not be opened as an image."));
     };
     image.src = url;
-  }));
+    });
+  });
 }
 
 export function extFromDataUrl(dataUrl) {
