@@ -16,6 +16,12 @@ import {
   searchSites,
 } from "./model.js?v=generic18";
 import { LOCAL_ORGS, LOCAL_SITES, readLocal } from "./storage.js?v=generic5";
+import {
+  buildGoogleTourDirectionsUrl,
+  formatGeolocationOrigin,
+  partitionTourStops,
+  tourMapAddress,
+} from "./tour-map.js?v=generic49";
 
 const FAVOURITES = "touristqr_favourites";
 const VISITS = "touristqr_visits";
@@ -768,6 +774,205 @@ function sitesFromIds(ids) {
   return ids.map((id) => state.sites.find((site) => site.id === id)).filter(Boolean);
 }
 
+const TOUR_MAP_START_KEY = "touristqr_tour_map_start";
+
+function tourSitesInOrder() {
+  return sitesFromIds(readJson(TOUR, []));
+}
+
+function readTourMapStartPrefs() {
+  try {
+    const value = JSON.parse(localStorage.getItem(TOUR_MAP_START_KEY) || "null");
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeTourMapStartPrefs(prefs) {
+  try {
+    localStorage.setItem(TOUR_MAP_START_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function tourMapOriginFromUi(mappable) {
+  const select = $("tour-map-start-select");
+  const custom = $("tour-map-start-custom");
+  const mode = select?.value || "custom";
+  if (mode === "geolocation") {
+    const prefs = readTourMapStartPrefs();
+    if (typeof prefs.lat === "number" && typeof prefs.lng === "number") {
+      return formatGeolocationOrigin(prefs.lat, prefs.lng);
+    }
+    return "";
+  }
+  if (mode === "custom") return String(custom?.value || "").trim();
+  const site = mappable.find((item) => item.id === mode);
+  return site ? tourMapAddress(site) : "";
+}
+
+function requestCurrentLocationForTourMap() {
+  const status = $("tour-map-location-status");
+  if (!navigator.geolocation) {
+    if (status) {
+      status.textContent = "This browser does not support location. Choose a tour stop or type a custom address.";
+    }
+    return Promise.resolve(null);
+  }
+  if (status) status.textContent = "Getting your location… Allow access if asked.";
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const prefs = readTourMapStartPrefs();
+        writeTourMapStartPrefs({ ...prefs, mode: "geolocation", lat, lng, at: Date.now() });
+        if (status) status.textContent = "Route will start from your current location.";
+        refreshTourMapModal();
+        resolve(formatGeolocationOrigin(lat, lng));
+      },
+      (err) => {
+        if (status) {
+          status.textContent = err.code === 1
+            ? "Location blocked. Allow access in browser settings, or pick another start."
+            : "Could not get location. Tap Update my location or choose another start.";
+        }
+        refreshTourMapModal();
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 },
+    );
+  });
+}
+
+function syncTourMapStartPanels() {
+  const select = $("tour-map-start-select");
+  const mode = select?.value || "custom";
+  $("tour-map-custom-wrap")?.classList.toggle("hidden", mode !== "custom");
+  $("tour-map-location-wrap")?.classList.toggle("hidden", mode !== "geolocation");
+}
+
+function refreshTourMapModal() {
+  const tourSites = tourSitesInOrder();
+  const { mappable, needsAddress } = partitionTourStops(tourSites);
+  const prefs = readTourMapStartPrefs();
+
+  const select = $("tour-map-start-select");
+  if (select) {
+    select.replaceChildren();
+    const locationOpt = document.createElement("option");
+    locationOpt.value = "geolocation";
+    locationOpt.textContent = "My current location";
+    select.append(locationOpt);
+    const customOpt = document.createElement("option");
+    customOpt.value = "custom";
+    customOpt.textContent = "Custom address…";
+    select.append(customOpt);
+    mappable.forEach((site) => {
+      const option = document.createElement("option");
+      option.value = site.id;
+      option.textContent = site.name;
+      select.append(option);
+    });
+    if (prefs.mode === "geolocation") {
+      select.value = "geolocation";
+    } else if (prefs.mode === "stop" && mappable.some((site) => site.id === prefs.siteId)) {
+      select.value = prefs.siteId;
+    } else if (prefs.mode === "custom") {
+      select.value = "custom";
+    } else if (mappable.length) {
+      select.value = mappable[0].id;
+    } else {
+      select.value = "geolocation";
+    }
+  }
+
+  syncTourMapStartPanels();
+  const customInput = $("tour-map-start-custom");
+  if (customInput && prefs.custom) customInput.value = prefs.custom;
+
+  const mappedList = $("tour-map-mapped-list");
+  const mappedEmpty = $("tour-map-mapped-empty");
+  if (mappedList) {
+    mappedList.replaceChildren();
+    mappable.forEach((site) => {
+      const li = document.createElement("li");
+      li.textContent = site.name;
+      mappedList.append(li);
+    });
+  }
+  mappedEmpty?.classList.toggle("hidden", mappable.length > 0);
+
+  const needsWrap = $("tour-map-needs-wrap");
+  const needsList = $("tour-map-needs-list");
+  needsWrap?.classList.toggle("hidden", !needsAddress.length);
+  if (needsList) {
+    needsList.replaceChildren();
+    needsAddress.forEach((site) => {
+      const li = document.createElement("li");
+      li.textContent = site.name;
+      needsList.append(li);
+    });
+  }
+
+  const origin = tourMapOriginFromUi(mappable);
+  const url = buildGoogleTourDirectionsUrl(origin, mappable);
+  const openLink = $("tour-map-open-google");
+  const openHint = $("tour-map-open-hint");
+  if (openLink) {
+    if (url && origin) {
+      openLink.href = url;
+      openLink.classList.remove("hidden");
+      openHint?.classList.add("hidden");
+    } else {
+      openLink.removeAttribute("href");
+      openLink.classList.add("hidden");
+      openHint?.classList.toggle("hidden", Boolean(origin && mappable.length));
+    }
+  }
+}
+
+function openTourMapModal() {
+  refreshTourMapModal();
+  setModal("tour-map-modal", true);
+  if ($("tour-map-start-select")?.value === "geolocation") {
+    const prefs = readTourMapStartPrefs();
+    const stale = !prefs.at || Date.now() - prefs.at > 120000;
+    if (stale || typeof prefs.lat !== "number") requestCurrentLocationForTourMap();
+  }
+}
+
+function persistTourMapStartFromUi() {
+  const select = $("tour-map-start-select");
+  const custom = $("tour-map-start-custom");
+  if (!select) return;
+  if (select.value === "custom") {
+    writeTourMapStartPrefs({ mode: "custom", custom: String(custom?.value || "").trim() });
+  } else if (select.value === "geolocation") {
+    const prev = readTourMapStartPrefs();
+    writeTourMapStartPrefs({
+      mode: "geolocation",
+      lat: prev.lat,
+      lng: prev.lng,
+      at: prev.at,
+    });
+  } else {
+    writeTourMapStartPrefs({ mode: "stop", siteId: select.value });
+  }
+}
+
+function onTourMapStartChange() {
+  syncTourMapStartPanels();
+  persistTourMapStartFromUi();
+  if ($("tour-map-start-select")?.value === "geolocation") {
+    requestCurrentLocationForTourMap();
+  } else {
+    refreshTourMapModal();
+  }
+}
+
 function rememberVisit(id) {
   const visits = readJson(VISITS, []).filter((item) => item && item.id !== id);
   visits.unshift({ id, at: new Date().toISOString() });
@@ -794,6 +999,7 @@ function applyListBrowsingButtons() {
   markListButton("saved-btn", state.browsing === "saved");
   markListButton("visited-btn", state.browsing === "visited");
   markListButton("tour-btn", state.browsing === "tour");
+  $("map-tour-btn")?.classList.toggle("hidden", state.browsing !== "tour");
   $("site-nav-cluster")?.classList.toggle("site-nav-filtered", navFiltered);
   const navLabel = $("site-nav-filtered-label");
   if (navLabel) {
@@ -1949,6 +2155,25 @@ on("about-list-open", "click", () => {
 on("list-your-place-open", "click", openListYourPlaceModal);
 on("list-your-place-close", "click", () => setModal("list-your-place-modal", false));
 on("list-your-place-dismiss", "click", () => setModal("list-your-place-modal", false));
+on("map-tour-btn", "click", openTourMapModal);
+on("tour-map-close", "click", () => setModal("tour-map-modal", false));
+on("tour-map-dismiss", "click", () => setModal("tour-map-modal", false));
+on("tour-map-start-select", "change", onTourMapStartChange);
+on("tour-map-start-custom", "input", () => {
+  persistTourMapStartFromUi();
+  refreshTourMapModal();
+});
+on("tour-map-location-refresh", "click", () => requestCurrentLocationForTourMap());
+on("tour-map-open-google", "click", async (event) => {
+  if ($("tour-map-start-select")?.value !== "geolocation") return;
+  const { mappable } = partitionTourStops(tourSitesInOrder());
+  if (tourMapOriginFromUi(mappable)) return;
+  event.preventDefault();
+  const origin = await requestCurrentLocationForTourMap();
+  if (!origin) return;
+  const url = buildGoogleTourDirectionsUrl(origin, mappable);
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
+});
 on("ios-tts-consent-decline", "click", () => {
   pendingStreamTtsText = "";
   setModal("ios-tts-consent-modal", false);

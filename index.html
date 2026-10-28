@@ -295,7 +295,10 @@
                     </div>
                     <p id="site-nav-filtered-label" class="hidden" aria-hidden="true">Filtered</p>
                 </div>
-                <button type="button" id="export-page" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 shadow-sm">Export</button>
+                <div class="flex flex-col items-stretch gap-1 w-full min-w-[6.5rem]">
+                    <button type="button" id="export-page" class="bg-white border border-slate-300 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 shadow-sm">Export</button>
+                    <button type="button" id="map-tour-btn" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-medium shadow-sm">Map tour</button>
+                </div>
             </div>
         </div>
 
@@ -438,6 +441,41 @@
         </form>
     </footer>
 
+    <div id="tour-map-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="tour-map-title">
+            <div class="flex justify-between items-start gap-3">
+                <h3 id="tour-map-title" class="text-lg font-bold text-slate-900">Tour map &amp; route</h3>
+                <button type="button" id="tour-map-close" class="text-slate-400 hover:text-slate-600 font-bold shrink-0" aria-label="Close">✕</button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">Choose where you start. Google Maps opens with your tour stops, optimises the driving order between start and last stop, and ends at the last mappable stop in your tour list.</p>
+            <div class="space-y-1">
+                <label for="tour-map-start-select" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Start from</label>
+                <select id="tour-map-start-select" class="w-full border border-slate-300 rounded-xl p-2 text-sm bg-white"></select>
+            </div>
+            <div id="tour-map-custom-wrap" class="space-y-1 hidden">
+                <label for="tour-map-start-custom" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Start address</label>
+                <input id="tour-map-start-custom" type="text" placeholder="Street, suburb, or place name" class="w-full border border-slate-300 rounded-xl p-2 text-sm" autocomplete="off">
+            </div>
+            <div id="tour-map-location-wrap" class="hidden space-y-2">
+                <p id="tour-map-location-status" class="text-xs text-slate-600 leading-relaxed">Allow location access when your browser asks. Google Maps will start the route from where you are now.</p>
+                <button type="button" id="tour-map-location-refresh" class="w-full bg-white border border-slate-300 text-slate-700 py-2 rounded-xl text-xs font-medium">Update my location</button>
+            </div>
+            <div class="space-y-2">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">On your tour (mapped)</p>
+                <ol id="tour-map-mapped-list" class="text-sm text-slate-700 space-y-1 list-decimal pl-5"></ol>
+                <p id="tour-map-mapped-empty" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2">No tour stops have a map location yet. Sponsors can add a maps address in admin.</p>
+            </div>
+            <div id="tour-map-needs-wrap" class="hidden space-y-2">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Needs address</p>
+                <p class="text-xs text-slate-500">These tour stops are not on the map until a maps location is saved in admin.</p>
+                <ul id="tour-map-needs-list" class="text-sm text-slate-700 space-y-1 list-disc pl-5"></ul>
+            </div>
+            <a id="tour-map-open-google" href="#" target="_blank" rel="noopener noreferrer" class="hidden w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium text-sm text-center">Open route in Google Maps</a>
+            <p id="tour-map-open-hint" class="hidden text-xs text-slate-500 text-center">Add at least one stop with a map location to open a route.</p>
+            <button type="button" id="tour-map-dismiss" class="w-full bg-white border border-slate-300 text-slate-700 py-2.5 rounded-xl font-medium text-sm">Close</button>
+        </div>
+    </div>
+
     <div id="list-your-place-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
         <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="list-your-place-title">
             <div class="flex justify-between items-start gap-3">
@@ -529,6 +567,6 @@
         </div>
     </div>
 
-    <script type="module" src="js/visitor.js?v=generic47"></script>
+    <script type="module" src="js/visitor.js?v=generic49"></script>
 </body>
 </html>
